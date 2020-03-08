@@ -23,8 +23,8 @@ import pandas as pd
 #   x.append(np.zeros(100000000))
 
 # Input file paths to the files
-train_file_path = '/content/train_paper_pandas.csv'
-valid_file_path = '/content/dev_paper_pandas.csv'
+train_file_path = '/home/ubuntu/MCDS-Capstone-Project/social_iqa/pre_processed_datasets/train_paper_pandas.csv'
+valid_file_path = '/home/ubuntu/MCDS-Capstone-Project/social_iqa/pre_processed_datasets/dev_paper_pandas.csv'
 
 # Read Train Data
 train_data = pd.read_csv(train_file_path)
@@ -213,7 +213,7 @@ model = model.cuda()
 # Cross Entropy Function
 loss_function = torch.nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters())
-
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0,verbose=True, min_lr=1e-6)
 # Training Code
 from tqdm import tqdm_notebook
 
@@ -274,6 +274,7 @@ for epoch in range(1, 30): ## run the model for 10 epochs
     print("Validation Accuracy:", sum(valid_acc)/len(valid_acc))
     print ("Epoch:", epoch, "Training Loss: ", np.mean(train_loss), "Valid Loss: ", np.mean(valid_loss))
     print('-----------------------------------------------------------------------')
+    scheduler.step(np.mean(val_loss))
 
 
 
