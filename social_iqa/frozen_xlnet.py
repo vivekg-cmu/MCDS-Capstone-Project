@@ -16,7 +16,7 @@ import torch.nn.functional as F
 from torch import optim
 import pandas as pd
 
-! pip install transformers
+#! pip install transformers
 
 # x = []
 # while True:
@@ -30,14 +30,27 @@ valid_file_path = '/home/ubuntu/MCDS-Capstone-Project/social_iqa/pre_processed_d
 train_data = pd.read_csv(train_file_path)
 valid_data = pd.read_csv(valid_file_path)
 
+train_data['ans_a'] = train_data['ans_a'].apply(lambda x: x[6:] + " " + x[:6])
+valid_data['ans_a'] = valid_data['ans_a'].apply(lambda x: x[6:] + " " + x[:6])
+
+train_data['ans_b'] = train_data['ans_a'].apply(lambda x: x[6:] + " " + x[:6])
+valid_data['ans_b'] = valid_data['ans_a'].apply(lambda x: x[6:] + " " + x[:6])
+
+train_data['ans_c'] = train_data['ans_c'].apply(lambda x: x[6:] + " " + x[:6])
+valid_data['ans_c'] = valid_data['ans_c'].apply(lambda x: x[6:] + " " + x[:6])
+
+
 # Use the GPU
-from transformers import BertModel, BertTokenizer
 # import torch
 
-tokenizer = BertTokenizer.from_pretrained('bert-large-uncased')
-model = BertModel.from_pretrained('bert-large-uncased')
+from transformers import XLNetTokenizer, XLNetModel
+
+tokenizer = XLNetTokenizer.from_pretrained('xlnet-large-cased')
+model = XLNetModel.from_pretrained('xlnet-large-cased')
 model.eval()
 model = model.cuda()
+
+
 # input_ids = torch.tensor(tokenizer.encode("Hello, my dog is as asd asf asf as", add_special_tokens=True)).unsqueeze(0)  # Batch size 1
 # outputs = model(input_ids)
 # last_hidden_states = outputs[0]
@@ -52,8 +65,8 @@ def get_bert_features(data):
   ans_dict = {x:[] for x in ans_list}
 
 
-  from tqdm import tqdm_notebook
-  pbar = tqdm_notebook(total=len(data))
+  from tqdm import tqdm
+  pbar = tqdm(total=len(data))
   
   
   # For all the rows in the dataset
@@ -74,7 +87,7 @@ def get_bert_features(data):
       # we use the representation of only the first word since that is what is used in the base paper
       # Hence the [0][0]. 
       # You can do what you wish with the features
-      ans_dict[ans].append(last_hidden_states[0][0].cpu().data.numpy())
+      ans_dict[ans].append(last_hidden_states[0][-1].cpu().data.numpy())
 
   return ans_dict
 
@@ -137,7 +150,7 @@ class Model(torch.nn.Module):
   def __init__(self):
       super().__init__()
 
-      self.ans_1_layer_1 = torch.nn.Linear(768, 512)
+      self.ans_1_layer_1 = torch.nn.Linear(1024, 512)
       self.ans_1_bn1 = torch.nn.BatchNorm1d(num_features=512)
       self.ans_1_layer_2 = torch.nn.Linear(512, 256)
       self.ans_1_bn2 = torch.nn.BatchNorm1d(num_features=256)
@@ -145,7 +158,7 @@ class Model(torch.nn.Module):
       self.ans_1_layer_4 = torch.nn.Linear(128, 32)
       self.ans_1_output = torch.nn.Linear(32, 1)
 
-      self.ans_2_layer_1 = torch.nn.Linear(768, 512)
+      self.ans_2_layer_1 = torch.nn.Linear(1024, 512)
       self.ans_2_bn1 = torch.nn.BatchNorm1d(num_features=512)
       self.ans_2_layer_2 = torch.nn.Linear(512, 256)
       self.ans_2_bn2 = torch.nn.BatchNorm1d(num_features=256)
@@ -153,7 +166,7 @@ class Model(torch.nn.Module):
       self.ans_2_layer_4 = torch.nn.Linear(128, 32)
       self.ans_2_output = torch.nn.Linear(32, 1)
 
-      self.ans_3_layer_1 = torch.nn.Linear(768, 512)
+      self.ans_3_layer_1 = torch.nn.Linear(1024, 512)
       self.ans_3_bn1 = torch.nn.BatchNorm1d(num_features=512)
       self.ans_3_layer_2 = torch.nn.Linear(512, 256)
       self.ans_3_bn2 = torch.nn.BatchNorm1d(num_features=256)
@@ -215,7 +228,7 @@ loss_function = torch.nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters())
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=0,verbose=True, min_lr=1e-6)
 # Training Code
-from tqdm import tqdm_notebook
+from tqdm import tqdm
 
 def compute_loss(x_output, labels):
     np_y = np.array(labels.cpu().data)
@@ -229,7 +242,7 @@ for epoch in range(1, 30): ## run the model for 10 epochs
     model.train()
     accuracy = []
     
-    pbar = tqdm_notebook(total=len(train_ans_a))
+    pbar = tqdm(total=len(train_ans_a))
 
     for batch_id, (ans_a, ans_b, ans_c, target) in enumerate(train_loader):
         ans_a = ans_a.cuda()
