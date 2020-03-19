@@ -32,7 +32,7 @@ def train(config):
         min_epochs=1,
         val_check_interval=0.1,
         log_save_interval=100,
-        row_log_interval=10,
+        row_log_interval=1,
         distributed_backend = "ddp",
         use_amp=config["use_amp"],
         weights_summary= 'top',

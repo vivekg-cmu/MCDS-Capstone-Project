@@ -114,7 +114,7 @@ class Classifier(pl.LightningModule):
 
 
     def dataloader(self, x_path: Union[str, pathlib.Path], y_path: Union[str, pathlib.Path] = None):
-
+        print("x_path:", x_path)
         df = pd.read_json(x_path, lines=True)
         if y_path:
             labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
