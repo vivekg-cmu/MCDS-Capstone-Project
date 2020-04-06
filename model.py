@@ -1,4 +1,3 @@
-
 import os
 import pathlib
 from typing import *
@@ -18,7 +17,7 @@ class ClassificationDataset(Dataset):
 
     def __init__(self, instances):
 
-        self.instances = instances
+        self.instances = instances  # what's the type?
 
     def __len__(self):
         return len(self.instances)
@@ -51,7 +50,7 @@ class Classifier(pl.LightningModule):
         assert len(batch["input_ids"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
-        
+
         batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], token_type_ids=batch["token_type_ids"])
@@ -122,7 +121,7 @@ class Classifier(pl.LightningModule):
             df["label"] = np.asarray(labels) - self.label_offset
 
         df["text"] = df.apply(self.transform(self.hparams["formula"]), axis=1)
-        print(df.head())
+        print(df.head())  # 'goal': goal, 'text': [(goal, sol1), (goal, sol2)]
         return ClassificationDataset(df[["text", "label"]].to_dict("records"))
 
 
@@ -165,4 +164,35 @@ class Classifier(pl.LightningModule):
         }
 
 
+if __name__ == "__main__":
 
+    def transform(formula):
+
+        def warpper(row):
+
+            context, choices = formula.split("->")
+            # (context + question -> answerA|answerB|answerC)
+            # (obs1 + obs2 -> hyp1|hyp2)
+            # (ctx_a + ctx_b -> ending_options)
+            # (goal -> sol1|sol2)
+            context = context.split("+")
+            choices = choices.split("|")
+
+            context = " ".join(row[x.strip()] for x in context)
+            choices = row[choices[0]] if len(choices) == 0 else [row[x.strip()] for x in choices]
+            return list(zip(cycle([context]), choices))
+
+        return warpper
+
+    x_path = "data/train.jsonl"
+    y_path = "data/train-labels.lst"
+    print("x_path:", x_path)
+    df = pd.read_json(x_path, lines=True)
+    if y_path:
+        labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
+        df["label"] = np.asarray(labels)
+
+    df["text"] = df.apply(transform("goal -> sol1|sol2"), axis=1)
+    print(df.head())
+    print(df['text'][0])
+    print(df[["text", "label"]].to_dict("records")[:2])
