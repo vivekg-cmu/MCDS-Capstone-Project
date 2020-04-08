@@ -46,7 +46,6 @@ class Classifier(pl.LightningModule):
 
     def forward(self, batch):
 
-
         assert len(batch["input_ids"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
@@ -105,11 +104,13 @@ class Classifier(pl.LightningModule):
     @pl.data_loader
     def train_dataloader(self):
 
-        return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]), batch_size=self.hparams["batch_size"], collate_fn=self.collate)
+        return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]),
+                          batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
     @pl.data_loader
     def val_dataloader(self):
-        return DataLoader(self.dataloader(self.root_path / self.hparams["val_x"], self.root_path / self.hparams["val_y"]), batch_size=self.hparams["batch_size"], collate_fn=self.collate)
+        return DataLoader(self.dataloader(self.root_path / self.hparams["val_x"], self.root_path / self.hparams["val_y"]),
+                          batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
 
     def dataloader(self, x_path: Union[str, pathlib.Path], y_path: Union[str, pathlib.Path] = None):
@@ -120,27 +121,35 @@ class Classifier(pl.LightningModule):
             self.label_offset = np.asarray(labels).min()
             df["label"] = np.asarray(labels) - self.label_offset
 
-        df["text"] = df.apply(self.transform(self.hparams["formula"]), axis=1)
+        k = 1
+        infusion_type = 'concat'
+        df["text"] = df.apply(self.transform(self.hparams["formula"], k, infusion_type), axis=1)
         print(df.head())  # 'goal': goal, 'text': [(goal, sol1), (goal, sol2)]
         return ClassificationDataset(df[["text", "label"]].to_dict("records"))
 
 
     @staticmethod
-    def transform(formula):
+    def transform(formula, k, infusion=None):
 
         def warpper(row):
 
-            context, choices = formula.split("->")
+            context, choice_names = formula.split("->")
             # (context + question -> answerA|answerB|answerC)
             # (obs1 + obs2 -> hyp1|hyp2)
             # (ctx_a + ctx_b -> ending_options)
             # (goal -> sol1|sol2)
             context = context.split("+")
-            choices = choices.split("|")
-
+            choice_names = choice_names.split("|")
             context = " ".join(row[x.strip()] for x in context)
-            choices = row[choices[0]] if len(choices) == 0 else [row[x.strip()] for x in choices]
-            return list(zip(cycle([context]), choices))
+
+            if infusion == 'concat':
+                choices = [row[x.strip()] for x in choice_names]
+                print([x.strip()+'_knowledge' for x in choice_names])
+                knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
+                context_choices = [context + " " + choice for choice in choices]
+                return list(zip(knowledge, context_choices))
+            else:
+                exit("Knowledge infusion method {} not supported".format(infusion))
 
         return warpper
 
@@ -151,9 +160,12 @@ class Classifier(pl.LightningModule):
         num_choice = len(examples[0]["text"])
 
         pairs = [pair for example in examples for pair in example["text"]]
-        results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True, max_length=self.hparams["max_length"], return_tensors='pt', return_attention_masks=True, pad_to_max_length=True)
+        results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
+                                                   max_length=self.hparams["max_length"], return_tensors='pt',
+                                                   return_attention_masks=True, pad_to_max_length=True)
 
-        assert results["input_ids"].shape[0] == batch_size * num_choice, f"Invalid shapes {results['input_ids'].shape} {batch_size, num_choice}"
+        assert results["input_ids"].shape[0] == batch_size * num_choice, \
+            f"Invalid shapes {results['input_ids'].shape} {batch_size, num_choice}"
 
         return {
             "input_ids": results["input_ids"],
@@ -166,33 +178,41 @@ class Classifier(pl.LightningModule):
 
 if __name__ == "__main__":
 
-    def transform(formula):
+    def transform(formula, k, infusion=None):
 
         def warpper(row):
 
-            context, choices = formula.split("->")
+            context, choice_names = formula.split("->")
             # (context + question -> answerA|answerB|answerC)
             # (obs1 + obs2 -> hyp1|hyp2)
             # (ctx_a + ctx_b -> ending_options)
             # (goal -> sol1|sol2)
             context = context.split("+")
-            choices = choices.split("|")
-
+            choice_names = choice_names.split("|")
             context = " ".join(row[x.strip()] for x in context)
-            choices = row[choices[0]] if len(choices) == 0 else [row[x.strip()] for x in choices]
-            return list(zip(cycle([context]), choices))
+
+            if infusion == 'concat':
+                choices = [row[x.strip()] for x in choice_names]
+                print([x.strip()+'_knowledge' for x in choice_names])
+                knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
+                context_choices = [context + " " + choice for choice in choices]
+                return list(zip(knowledge, context_choices))
+            else:
+                exit("Knowledge infusion method {} not supported".format(infusion))
 
         return warpper
 
-    x_path = "data/train.jsonl"
-    y_path = "data/train-labels.lst"
+    x_path = "data/train-knowledge-last100.jsonl"
+    y_path = "data/train-labels-last100.lst"
+    k = 1
+    infusion_type = 'concat'
     print("x_path:", x_path)
     df = pd.read_json(x_path, lines=True)
     if y_path:
         labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
         df["label"] = np.asarray(labels)
 
-    df["text"] = df.apply(transform("goal -> sol1|sol2"), axis=1)
+    df["text"] = df.apply(transform("goal -> sol1|sol2", k, infusion_type), axis=1)
     print(df.head())
     print(df['text'][0])
     print(df[["text", "label"]].to_dict("records")[:2])
