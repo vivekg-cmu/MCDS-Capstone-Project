@@ -28,14 +28,20 @@ if __name__ == "__main__":
     model.eval()
 
     preds: List[int] = []
-    for batch in tqdm(DataLoader(model.dataloader(args.input_x, args.input_y), batch_size=model.hparams["batch_size"] * 2, collate_fn=model.collate, shuffle=False)):
+    full_loss = []
+    for batch in tqdm(DataLoader(model.dataloader(args.input_x, args.input_y), 
+                                 batch_size=model.hparams["batch_size"] * 2, 
+                                 collate_fn=model.collate, shuffle=False)):
         for key in batch:
             if isinstance(batch[key], torch.Tensor):
                 batch[key] = batch[key].to(device)
         
         with torch.no_grad():
             logits = model.forward(batch)
+            loss = model.loss(logits, batch["labels"])
+            
         preds.extend(torch.argmax(logits, dim=1).cpu().detach().numpy().tolist())
+        full_loss.append(loss)
     preds = [p + model.label_offset for p in preds]
 
     if args.input_y:
@@ -46,6 +52,9 @@ if __name__ == "__main__":
 
         labels = pd.read_csv(args.input_y, sep='\t', header=None).values.tolist()
         logger.info(f"F1 score: {accuracy_score(labels, preds):.3f}")
+        val_loss = torch.stack(full_loss).mean()
+        print(val_loss)
+        logger.info(f"val_loss: {val_loss:.4f}")
 
         stats = []
         for _ in range(100):

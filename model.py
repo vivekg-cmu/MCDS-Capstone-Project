@@ -69,6 +69,9 @@ class Classifier(pl.LightningModule):
         return {
             "loss": loss
         }
+    
+    def training_end(self, outputs):
+        print("")
 
     def validation_step(self, batch, batch_idx):
         logits = self.forward(batch)
@@ -122,8 +125,8 @@ class Classifier(pl.LightningModule):
             self.label_offset = np.asarray(labels).min()
             df["label"] = np.asarray(labels) - self.label_offset
 
-        k = None if "k" not in self.hparams else self.hparams["formula"]
-        infusion_type = None if "infusion" not in self.haparms else self.hparams["formula"]
+        k = None if "k" not in self.hparams else self.hparams["k"]
+        infusion_type = None if "infusion" not in self.hparams else self.hparams["infusion"]
         df["text"] = df.apply(self.transform(self.hparams["formula"], k, infusion_type), axis=1)
         print(df.head())  # 'goal': goal, 'text': [(goal, sol1), (goal, sol2)]
         return ClassificationDataset(df[["text", "label"]].to_dict("records"))
@@ -209,8 +212,8 @@ if __name__ == "__main__":
 
     x_path = "data/piqa/train-knowledge-last100.jsonl"
     y_path = "data/piqa/train-labels-last100.lst"
-    k = None
-    infusion_type = None
+    k = 1
+    infusion_type = "concat"
     print("x_path:", x_path)
     
     df = pd.read_json(x_path, lines=True)
