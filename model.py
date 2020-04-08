@@ -89,6 +89,7 @@ class Classifier(pl.LightningModule):
         return {
             'val_loss': val_loss_mean,
             "progress_bar": {
+                'val_loss': val_loss_mean,
                 "val_accuracy": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
             }
         }
@@ -121,15 +122,15 @@ class Classifier(pl.LightningModule):
             self.label_offset = np.asarray(labels).min()
             df["label"] = np.asarray(labels) - self.label_offset
 
-        k = 1
-        infusion_type = 'concat'
+        k = None if "k" not in self.hparams else self.hparams["formula"]
+        infusion_type = None if "infusion" not in self.haparms else self.hparams["formula"]
         df["text"] = df.apply(self.transform(self.hparams["formula"], k, infusion_type), axis=1)
         print(df.head())  # 'goal': goal, 'text': [(goal, sol1), (goal, sol2)]
         return ClassificationDataset(df[["text", "label"]].to_dict("records"))
 
 
     @staticmethod
-    def transform(formula, k, infusion=None):
+    def transform(formula, k=None, infusion=None):
 
         def warpper(row):
 
@@ -144,10 +145,12 @@ class Classifier(pl.LightningModule):
 
             if infusion == 'concat':
                 choices = [row[x.strip()] for x in choice_names]
-                print([x.strip()+'_knowledge' for x in choice_names])
                 knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 context_choices = [context + " " + choice for choice in choices]
                 return list(zip(knowledge, context_choices))
+            elif not infusion:
+                choices = [row[x.strip()] for x in choice_names]
+                return list(zip(cycle(context), choices))
             else:
                 exit("Knowledge infusion method {} not supported".format(infusion))
 
@@ -178,7 +181,7 @@ class Classifier(pl.LightningModule):
 
 if __name__ == "__main__":
 
-    def transform(formula, k, infusion=None):
+    def transform(formula, k=None, infusion=None):
 
         def warpper(row):
 
@@ -193,20 +196,23 @@ if __name__ == "__main__":
 
             if infusion == 'concat':
                 choices = [row[x.strip()] for x in choice_names]
-                print([x.strip()+'_knowledge' for x in choice_names])
                 knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 context_choices = [context + " " + choice for choice in choices]
                 return list(zip(knowledge, context_choices))
+            elif not infusion:
+                choices = [row[x.strip()] for x in choice_names]
+                return list(zip(cycle([context]), choices))
             else:
                 exit("Knowledge infusion method {} not supported".format(infusion))
 
         return warpper
 
-    x_path = "data/train-knowledge-last100.jsonl"
-    y_path = "data/train-labels-last100.lst"
-    k = 1
-    infusion_type = 'concat'
+    x_path = "data/piqa/train-knowledge-last100.jsonl"
+    y_path = "data/piqa/train-labels-last100.lst"
+    k = None
+    infusion_type = None
     print("x_path:", x_path)
+    
     df = pd.read_json(x_path, lines=True)
     if y_path:
         labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()

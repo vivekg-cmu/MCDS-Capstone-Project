@@ -20,6 +20,8 @@ def train(config):
         torch.backends.cuda.deterministic = True
         torch.backends.cuda.benchmark = False
 
+#     print([i for i in range(torch.cuda.device_count())])
+        
     model = Classifier(config)
     trainer = Trainer(
         gradient_clip_val = 0,
@@ -38,7 +40,7 @@ def train(config):
         weights_summary= 'top',
         amp_level='O2',
         num_sanity_val_steps=5,
-        resume_from_checkpoint=None,
+        resume_from_checkpoint=None if "checkpoint" not in config else config["checkpoint"]
     )
     trainer.fit(model)
 
