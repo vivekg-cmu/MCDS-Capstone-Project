@@ -70,8 +70,9 @@ class Classifier(pl.LightningModule):
             "loss": loss
         }
     
-    def training_end(self, outputs):
+    def training_epoch_end(self, outputs):
         print("")
+        return {}
 
     def validation_step(self, batch, batch_idx):
         logits = self.forward(batch)
