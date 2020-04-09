@@ -426,11 +426,13 @@ class CommonsenseqaInjProcessor(DataProcessor):
 myprocessors = {
     "csqa": CommonsenseqaProcessor,
     "csqa-inj": CommonsenseqaInjProcessor,
-    "siqa": SocialIqaProcessor
+    "siqa": SocialIqaProcessor,
+    "siqa-inj": SocialIqaInjProcessor
 }
 
 output_modes = {
     "csqa": "classification",
     "csqa-inj": "classification",
-    "siqa": "classification"
+    "siqa": "classification",
+    "siqa-inj": "classification"
 }
