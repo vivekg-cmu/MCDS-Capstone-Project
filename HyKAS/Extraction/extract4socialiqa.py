@@ -178,26 +178,76 @@ def build_trees(en_concetps, long_en_concepts, stopwords, question, options):
     return options_cs
 
 
+def build_dict_social(data):
+    vocab = Counter()
+    for sample in tqdm.tqdm(data):
+
+        for w in tokenizer.tokenize(sample['context']):
+            vocab[w] += 1
+        for w in tokenizer.tokenize(sample['question']):
+            vocab[w] += 1
+
+        for w in tokenizer.tokenize(sample['answerA']):
+            vocab[w] += 1
+
+        for w in tokenizer.tokenize(sample['answerB']):
+            vocab[w] += 1
+
+        for w in tokenizer.tokenize(sample['answerC']):
+            vocab[w] += 1
+
+    print(len(vocab))
+    stopwords = dict(vocab.most_common(20))
+    print(stopwords)
+    return vocab, stopwords
+
+def social_iqa_wrapper(sample):
+    question = sample['context'] + sample['question']
+    choices = [sample['answerA'], sample['answerB'], sample['answerC']]
+    return question, choices
+
+
 if __name__ == '__main__':
     with open('en_concepts.pickle', 'rb') as f:
         en_concepts = pickle.load(f)
     with open('long_en_concepts.pickle', 'rb') as f:
         long_en_concepts = pickle.load(f)
+
     train_data = []
-    with open('../CommonsenseQA/train_rand_split.jsonl', 'r') as f:
+    with open('../social_iqa_data/train.jsonl', 'r') as f:
         for line in f:
             train_data.append(json.loads(line))
+
+    vocab, stopwords = build_dict_social(train_data)
+
+    for idx, sample in tqdm.tqdm(enumerate(train_data)):
+        question, choices = social_iqa_wrapper(sample)
+        question = sample['question']['stem'].lower()
+        options_cs = build_trees(en_concepts, long_en_concepts, stopwords, question,
+                                 choices)
+        sample['choice_commonsense'] = [[], [], [], [], []]
+        common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2])).intersection(
+            set(options_cs[3])).intersection(set(options_cs[4]))
+        for i, o in enumerate(options_cs):
+            for c in o:
+                if c not in common_cs:
+                    sample['choice_commonsense'][i].append(c)
+
+    with open('train_cs.jsonl', 'w') as fout:
+        for sample in train_data:
+            json.dump(sample, fout)
+            fout.write('\n')
+
     dev_data = []
-    with open('../CommonsenseQA/dev_rand_split.jsonl', 'r') as f:
+    with open('../social_iqa_data/dev.jsonl', 'r') as f:
         for line in f:
             dev_data.append(json.loads(line))
 
-    vocab, stopwords = build_dict(train_data)
-
     for idx, sample in tqdm.tqdm(enumerate(dev_data)):
+        question, choices = social_iqa_wrapper(sample)
         question = sample['question']['stem'].lower()
         options_cs = build_trees(en_concepts, long_en_concepts, stopwords, question,
-                                 [c['text'] for c in sample['question']['choices']])
+                                 choices)
         sample['choice_commonsense'] = [[], [], [], [], []]
         common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2])).intersection(
             set(options_cs[3])).intersection(set(options_cs[4]))
