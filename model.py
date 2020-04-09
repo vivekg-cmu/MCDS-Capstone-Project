@@ -31,6 +31,7 @@ class Classifier(pl.LightningModule):
     def __init__(self, config):
         super().__init__()
         self.hparams = config
+        self.infusion = None if "infusion" not in self.hparams else self.hparams["infusion"]
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache")
         self.tokenizer = AutoTokenizer.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
@@ -38,6 +39,7 @@ class Classifier(pl.LightningModule):
         self.embedder.train()
         self.label_offset = 0
         self.classifier = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
+        print(self.classifier)
 
         self.loss = nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
 
@@ -57,11 +59,17 @@ class Classifier(pl.LightningModule):
         print("batch labels:", batch["labels"].shape)
 
         token_embeddings, *_ = results
+        print("tokken_embeddings:", token_embeddings.shape)
+        if self.infusion == "sum":
+            seq_len = token_embeddings.shape[1]
+            hidden_dim = token_embeddings.shape[2]
+            print("hidden_dim:", hidden_dim)
+            token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], seq_len, hidden_dim).sum(dim=1)
+        print("tokken_embeddings:", token_embeddings.shape)
         logits = self.classifier(token_embeddings.mean(dim=1)).squeeze(dim=1)
         print('logits.shape:', logits.shape)
 
-        infusion = None if "infusion" not in self.hparams else self.hparams["infusion"]
-        if infusion == "max":
+        if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
             print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
@@ -162,7 +170,7 @@ class Classifier(pl.LightningModule):
                 knowledges = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 context_choices = [context + " " + choice for choice in choices]
                 return list(zip(knowledges, context_choices))
-            elif infusion == "max":
+            elif infusion == "max" or infusion == "sum":
                 knowledges = [row[x.strip()+'_knowledge'][:k] for x in choice_names]
                 context_choices = [context + " " + choice for choice in choices]
                 k_context_choices = [zip(knowledge, cycle([cc])) for knowledge, cc in zip(knowledges, context_choices)]
