@@ -208,9 +208,9 @@ def social_iqa_wrapper(sample):
 
 
 if __name__ == '__main__':
-    with open('en_concepts.pickle', 'rb') as f:
+    with open('/content/drive/My Drive/en_concepts.pickle', 'rb') as f:
         en_concepts = pickle.load(f)
-    with open('long_en_concepts.pickle', 'rb') as f:
+    with open('/content/drive/My Drive/long_en_concepts.pickle', 'rb') as f:
         long_en_concepts = pickle.load(f)
 
     train_data = []
@@ -233,7 +233,7 @@ if __name__ == '__main__':
                 if c not in common_cs:
                     sample['choice_commonsense'][i].append(c)
 
-    with open('train_cs.jsonl', 'w') as fout:
+    with open('/content/drive/My Drive/train_cs.jsonl', 'w') as fout:
         for sample in train_data:
             json.dump(sample, fout)
             fout.write('\n')
@@ -256,7 +256,7 @@ if __name__ == '__main__':
                 if c not in common_cs:
                     sample['choice_commonsense'][i].append(c)
 
-    with open('dev_cs.jsonl', 'w') as fout:
+    with open('/content/drive/My Drive/dev_cs.jsonl', 'w') as fout:
         for sample in dev_data:
             json.dump(sample, fout)
             fout.write('\n')
