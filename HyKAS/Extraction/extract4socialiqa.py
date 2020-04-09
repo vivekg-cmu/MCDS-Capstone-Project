@@ -214,7 +214,7 @@ if __name__ == '__main__':
         long_en_concepts = pickle.load(f)
 
     train_data = []
-    with open('../social_iqa_data/train.jsonl', 'r') as f:
+    with open('../social_iqa_data/train.jsonl.txt', 'r') as f:
         for line in f:
             train_data.append(json.loads(line))
 
@@ -222,12 +222,10 @@ if __name__ == '__main__':
 
     for idx, sample in tqdm.tqdm(enumerate(train_data)):
         question, choices = social_iqa_wrapper(sample)
-        question = sample['question']['stem'].lower()
         options_cs = build_trees(en_concepts, long_en_concepts, stopwords, question,
                                  choices)
         sample['choice_commonsense'] = [[], [], [], [], []]
-        common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2])).intersection(
-            set(options_cs[3])).intersection(set(options_cs[4]))
+        common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2]))
         for i, o in enumerate(options_cs):
             for c in o:
                 if c not in common_cs:
@@ -245,12 +243,10 @@ if __name__ == '__main__':
 
     for idx, sample in tqdm.tqdm(enumerate(dev_data)):
         question, choices = social_iqa_wrapper(sample)
-        question = sample['question']['stem'].lower()
         options_cs = build_trees(en_concepts, long_en_concepts, stopwords, question,
                                  choices)
         sample['choice_commonsense'] = [[], [], [], [], []]
-        common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2])).intersection(
-            set(options_cs[3])).intersection(set(options_cs[4]))
+        common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2]))
         for i, o in enumerate(options_cs):
             for c in o:
                 if c not in common_cs:
