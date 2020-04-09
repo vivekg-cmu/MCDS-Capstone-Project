@@ -26,7 +26,7 @@ if __name__ == "__main__":
     model.load_state_dict(checkpoint['state_dict'])
     model.to(device)
     model.eval()
-
+    
     preds: List[int] = []
     full_loss = []
     for batch in tqdm(DataLoader(model.dataloader(args.input_x, args.input_y), 

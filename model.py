@@ -39,7 +39,7 @@ class Classifier(pl.LightningModule):
         self.embedder.train()
         self.label_offset = 0
         self.classifier = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
-        print(self.classifier)
+        print("batch size:", self.hparams["batch_size"])
 
         self.loss = nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
 
@@ -54,27 +54,28 @@ class Classifier(pl.LightningModule):
 
         batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
 
-        results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], token_type_ids=batch["token_type_ids"])
-        print('batch["input_ids"]:', batch["input_ids"].shape)
+        results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], 
+                                token_type_ids=batch["token_type_ids"])
+        print('batch["input_ids"].shape:', batch["input_ids"].shape)
         print("batch labels:", batch["labels"].shape)
 
         token_embeddings, *_ = results
-        print("tokken_embeddings:", token_embeddings.shape)
+#         print("tokken_embeddings:", token_embeddings.shape)
         if self.infusion == "sum":
             seq_len = token_embeddings.shape[1]
             hidden_dim = token_embeddings.shape[2]
-            print("hidden_dim:", hidden_dim)
+#             print("hidden_dim:", hidden_dim)
             token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], seq_len, hidden_dim).sum(dim=1)
-        print("tokken_embeddings:", token_embeddings.shape)
+#         print("tokken_embeddings:", token_embeddings.shape)
         logits = self.classifier(token_embeddings.mean(dim=1)).squeeze(dim=1)
-        print('logits.shape:', logits.shape)
+#         print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
-            print('logits.shape:', logits.shape)
+#             print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
 
-        print('logits.shape:', logits.shape)
+#         print('logits.shape:', logits.shape)
 
         return logits
 
@@ -88,9 +89,9 @@ class Classifier(pl.LightningModule):
             "loss": loss
         }
 
-    def training_epoch_end(self, outputs):
-        print("")
-        return {}
+#     def training_epoch_end(self, outputs):
+#         print("")
+#         return {}
 
     def validation_step(self, batch, batch_idx):
         logits = self.forward(batch)
@@ -110,9 +111,10 @@ class Classifier(pl.LightningModule):
         val_labels = torch.cat([o["val_batch_labels"] for o in outputs])
         return {
             'val_loss': val_loss_mean,
+            "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0),
             "progress_bar": {
                 'val_loss': val_loss_mean,
-                "val_accuracy": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
+                "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
             }
         }
 
@@ -194,7 +196,7 @@ class Classifier(pl.LightningModule):
         results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                    max_length=self.hparams["max_length"], return_tensors='pt',
                                                    return_attention_masks=True, pad_to_max_length=True)
-        print(results["input_ids"].shape[0])
+#         print('results["input_ids"]:', results["input_ids"].shape[0])
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \

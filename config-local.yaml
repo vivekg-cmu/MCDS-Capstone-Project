@@ -9,9 +9,10 @@ warmup_steps: 150
 batch_size: 4
 max_length: 128
 formula: "goal -> sol1|sol2"
-train_x: "data/piqa/train-knowledge-first1000.jsonl"
-train_y: "data/piqa/train-labels-first1000.lst"
-val_x: "data/piqa/train-knowledge-last100.jsonl"
-val_y: "data/piqa/train-labels-last100.lst"
+train_x: "data/piqa/train-knowledge-last10.jsonl"
+train_y: "data/piqa/train-labels-last10.lst"
+val_x: "data/piqa/train-knowledge-last10.jsonl"
+val_y: "data/piqa/train-labels-last10.lst"
 infusion: "max"
 k: 2
+gpu: 0
