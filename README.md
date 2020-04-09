@@ -48,6 +48,3 @@ python eval.py \
     --output pred.lst
 ```
 
-
-
-bokeh

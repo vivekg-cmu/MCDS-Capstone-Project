@@ -1,7 +1,7 @@
 import os
 import pathlib
 from typing import *
-from itertools import cycle
+from itertools import cycle, chain
 
 import torch
 import pytorch_lightning as pl
@@ -17,7 +17,7 @@ class ClassificationDataset(Dataset):
 
     def __init__(self, instances):
 
-        self.instances = instances  # what's the type?
+        self.instances = instances
 
     def __len__(self):
         return len(self.instances)
@@ -53,10 +53,20 @@ class Classifier(pl.LightningModule):
         batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], token_type_ids=batch["token_type_ids"])
+        print('batch["input_ids"]:', batch["input_ids"].shape)
+        print("batch labels:", batch["labels"].shape)
 
         token_embeddings, *_ = results
         logits = self.classifier(token_embeddings.mean(dim=1)).squeeze(dim=1)
+        print('logits.shape:', logits.shape)
+
+        infusion = None if "infusion" not in self.hparams else self.hparams["infusion"]
+        if infusion == "max":
+            logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
+            print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
+
+        print('logits.shape:', logits.shape)
 
         return logits
 
@@ -69,7 +79,7 @@ class Classifier(pl.LightningModule):
         return {
             "loss": loss
         }
-    
+
     def training_epoch_end(self, outputs):
         print("")
         return {}
@@ -146,15 +156,19 @@ class Classifier(pl.LightningModule):
             context = context.split("+")
             choice_names = choice_names.split("|")
             context = " ".join(row[x.strip()] for x in context)
+            choices = [row[x.strip()] for x in choice_names]
 
             if infusion == 'concat':
-                choices = [row[x.strip()] for x in choice_names]
-                knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
+                knowledges = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 context_choices = [context + " " + choice for choice in choices]
-                return list(zip(knowledge, context_choices))
+                return list(zip(knowledges, context_choices))
+            elif infusion == "max":
+                knowledges = [row[x.strip()+'_knowledge'][:k] for x in choice_names]
+                context_choices = [context + " " + choice for choice in choices]
+                k_context_choices = [zip(knowledge, cycle([cc])) for knowledge, cc in zip(knowledges, context_choices)]
+                return list(chain.from_iterable(k_context_choices))
             elif not infusion:
-                choices = [row[x.strip()] for x in choice_names]
-                return list(zip(cycle(context), choices))
+                return list(zip(cycle([context]), choices))
             else:
                 exit("Knowledge infusion method {} not supported".format(infusion))
 
@@ -165,13 +179,17 @@ class Classifier(pl.LightningModule):
 
         batch_size = len(examples)
         num_choice = len(examples[0]["text"])
+        if "infusion" in self.hparams and self.hparams["infusion"] != "concat":
+            num_choice //= self.hparams["k"]
 
         pairs = [pair for example in examples for pair in example["text"]]
         results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                    max_length=self.hparams["max_length"], return_tensors='pt',
                                                    return_attention_masks=True, pad_to_max_length=True)
+        print(results["input_ids"].shape[0])
 
-        assert results["input_ids"].shape[0] == batch_size * num_choice, \
+        k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
+        assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
             f"Invalid shapes {results['input_ids'].shape} {batch_size, num_choice}"
 
         return {
@@ -185,44 +203,21 @@ class Classifier(pl.LightningModule):
 
 if __name__ == "__main__":
 
-    def transform(formula, k=None, infusion=None):
-
-        def warpper(row):
-
-            context, choice_names = formula.split("->")
-            # (context + question -> answerA|answerB|answerC)
-            # (obs1 + obs2 -> hyp1|hyp2)
-            # (ctx_a + ctx_b -> ending_options)
-            # (goal -> sol1|sol2)
-            context = context.split("+")
-            choice_names = choice_names.split("|")
-            context = " ".join(row[x.strip()] for x in context)
-
-            if infusion == 'concat':
-                choices = [row[x.strip()] for x in choice_names]
-                knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
-                context_choices = [context + " " + choice for choice in choices]
-                return list(zip(knowledge, context_choices))
-            elif not infusion:
-                choices = [row[x.strip()] for x in choice_names]
-                return list(zip(cycle([context]), choices))
-            else:
-                exit("Knowledge infusion method {} not supported".format(infusion))
-
-        return warpper
-
     x_path = "data/piqa/train-knowledge-last100.jsonl"
     y_path = "data/piqa/train-labels-last100.lst"
-    k = 1
-    infusion_type = "concat"
+    k = 2
+    infusion = "max"
     print("x_path:", x_path)
-    
+
     df = pd.read_json(x_path, lines=True)
     if y_path:
         labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
         df["label"] = np.asarray(labels)
 
-    df["text"] = df.apply(transform("goal -> sol1|sol2", k, infusion_type), axis=1)
+    df["text"] = df.apply(Classifier.transform("goal -> sol1|sol2", k, infusion), axis=1)
     print(df.head())
     print(df['text'][0])
     print(df[["text", "label"]].to_dict("records")[:2])
+    instances = df[["text", "label"]].to_dict("records")
+    print(len(instances))
+    print(len(instances[0]['text']))

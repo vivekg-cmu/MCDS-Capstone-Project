@@ -8,7 +8,8 @@ from loguru import logger
 from model import Classifier
 
 
-@hydra.main(config_path="config.yaml")
+@hydra.main(config_path="config-local.yaml")
+# @hydra.main(config_path="config.yaml")
 def train(config):
 
     logger.info(config)
@@ -19,7 +20,7 @@ def train(config):
     if torch.cuda.is_available():
         torch.backends.cuda.deterministic = True
         torch.backends.cuda.benchmark = False
-        
+
     model = Classifier(config)
     trainer = Trainer(
         gradient_clip_val = 0,
