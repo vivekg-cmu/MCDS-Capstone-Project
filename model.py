@@ -17,7 +17,7 @@ class ClassificationDataset(Dataset):
 
     def __init__(self, instances):
 
-        self.instances = instances  # what's the type?
+        self.instances = instances
 
     def __len__(self):
         return len(self.instances)
@@ -53,6 +53,7 @@ class Classifier(pl.LightningModule):
         batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], token_type_ids=batch["token_type_ids"])
+        print(batch.shape)
 
         token_embeddings, *_ = results
         logits = self.classifier(token_embeddings.mean(dim=1)).squeeze(dim=1)
@@ -123,7 +124,7 @@ class Classifier(pl.LightningModule):
             df["label"] = np.asarray(labels) - self.label_offset
 
         k = None if "k" not in self.hparams else self.hparams["formula"]
-        infusion_type = None if "infusion" not in self.haparms else self.hparams["formula"]
+        infusion_type = None if "infusion" not in self.hparams else self.hparams["formula"]
         df["text"] = df.apply(self.transform(self.hparams["formula"], k, infusion_type), axis=1)
         print(df.head())  # 'goal': goal, 'text': [(goal, sol1), (goal, sol2)]
         return ClassificationDataset(df[["text", "label"]].to_dict("records"))
@@ -148,6 +149,7 @@ class Classifier(pl.LightningModule):
                 knowledge = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 context_choices = [context + " " + choice for choice in choices]
                 return list(zip(knowledge, context_choices))
+            # elif infusion == ""
             elif not infusion:
                 choices = [row[x.strip()] for x in choice_names]
                 return list(zip(cycle(context), choices))
@@ -210,15 +212,15 @@ if __name__ == "__main__":
     x_path = "data/piqa/train-knowledge-last100.jsonl"
     y_path = "data/piqa/train-labels-last100.lst"
     k = None
-    infusion_type = None
+    infusion = None
     print("x_path:", x_path)
-    
+
     df = pd.read_json(x_path, lines=True)
     if y_path:
         labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
         df["label"] = np.asarray(labels)
 
-    df["text"] = df.apply(transform("goal -> sol1|sol2", k, infusion_type), axis=1)
+    df["text"] = df.apply(transform("goal -> sol1|sol2", k, infusion), axis=1)
     print(df.head())
     print(df['text'][0])
     print(df[["text", "label"]].to_dict("records")[:2])
