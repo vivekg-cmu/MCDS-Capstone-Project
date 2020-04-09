@@ -245,7 +245,7 @@ if __name__ == '__main__':
         question, choices = social_iqa_wrapper(sample)
         options_cs = build_trees(en_concepts, long_en_concepts, stopwords, question,
                                  choices)
-        sample['choice_commonsense'] = [[], [], [], [], []]
+        sample['choice_commonsense'] = [[], [], []]
         common_cs = set(options_cs[0]).intersection(set(options_cs[1])).intersection(set(options_cs[2]))
         for i, o in enumerate(options_cs):
             for c in o:
