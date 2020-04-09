@@ -95,6 +95,7 @@ class OptionCompareCell(nn.Module):
         self.SelfAtt_layer = OCN_SelfAtt_layer(config)
 
     def forward(self, encoded_o, encoded_q, option_mask, question_mask):
+        '''
         o1o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
         o1o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
         o1o4 = self.option_att_layer(encoded_o[:, 3, :, :], option_mask[:, 3, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
@@ -134,6 +135,30 @@ class OptionCompareCell(nn.Module):
         merged_o5 = self.option_merge_layer(encoded_o[:, 4, :, :], o5o1, o5o2, o5o3, o5o4, encoded_q[:, 4, :, :], question_mask[:, 4, :])
         reread_o5 = self.CoAtt_layer(encoded_q[:, 4, :, :], question_mask[:, 4, :], merged_o5, option_mask[:, 4, :])
         final_o5 = self.SelfAtt_layer(reread_o5, option_mask[:, 4, :], reread_o5, option_mask[:, 4, :])
+        '''
+        # print(encoded_o.shape, type(encoded_o))
+        # print(encoded_q.shape, type(encoded_q))
+        # print(option_mask.shape, type(option_mask))
+        # print(question_mask.shape, type(question_mask))
+
+        o1o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
+        o1o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
+        # print(o1o2.shape, o1o3.shape)
+        merged_o1 = self.option_merge_layer(encoded_o[:, 0, :, :], [o1o2, o1o3], encoded_q[:, 0, :, :], question_mask[:, 0, :])
+        reread_o1 = self.CoAtt_layer(encoded_q[:, 0, :, :], question_mask[:, 0, :], merged_o1, option_mask[:, 0, :])
+        final_o1 = self.SelfAtt_layer(reread_o1, option_mask[:, 0, :], reread_o1, option_mask[:, 0, :])
+
+        o2o1 = self.option_att_layer(encoded_o[:, 0, :, :], option_mask[:, 0, :], encoded_o[:, 1, :, :], option_mask[:, 1, :])
+        o2o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 1, :, :], option_mask[:, 1, :])
+        merged_o2 = self.option_merge_layer(encoded_o[:, 1, :, :], [o2o1, o2o3], encoded_q[:, 1, :, :], question_mask[:, 1, :])
+        reread_o2 = self.CoAtt_layer(encoded_q[:, 1, :, :], question_mask[:, 1, :], merged_o2, option_mask[:, 1, :])
+        final_o2 = self.SelfAtt_layer(reread_o2, option_mask[:, 1, :], reread_o2, option_mask[:, 1, :])
+
+        o3o1 = self.option_att_layer(encoded_o[:, 0, :, :], option_mask[:, 0, :], encoded_o[:, 2, :, :], option_mask[:, 2, :])
+        o3o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 2, :, :], option_mask[:, 2, :])
+        merged_o3 = self.option_merge_layer(encoded_o[:, 2, :, :], [o3o1, o3o2], encoded_q[:, 2, :, :], question_mask[:, 2, :])
+        reread_o3 = self.CoAtt_layer(encoded_q[:, 2, :, :], question_mask[:, 2, :], merged_o3, option_mask[:, 2, :])
+        final_o3 = self.SelfAtt_layer(reread_o3, option_mask[:, 2, :], reread_o3, option_mask[:, 2, :])
 
         candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1), final_o4.unsqueeze(1), final_o5.unsqueeze(1)], dim=1)
         candidates, _ = torch.max(candidates, dim=2)
