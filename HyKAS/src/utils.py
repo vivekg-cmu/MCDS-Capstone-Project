@@ -58,7 +58,9 @@ def convert_examples_to_features(examples, tokenizer, max_length=512,
     for (ex_index, example) in enumerate(examples):
         if ex_index % 10000 == 0:
             logger.info("Writing example %d of %d" % (ex_index, len(examples)))
-
+        # print('example.text_b', example.text_b)
+        # print('example.text_a', example.text_a)
+        # print('example.concepts', example.concepts)
         inputs = tokenizer.encode_plus(example.text_b, add_special_tokens=True, max_length=max_length)
         try:
             inputs_a = tokenizer.encode_plus(example.text_a, add_special_tokens=True,
@@ -76,6 +78,7 @@ def convert_examples_to_features(examples, tokenizer, max_length=512,
         concepts = None
         concepts_mask = None
         concepts_mask_full = None
+        # example.concepts = [example.concepts]
         if example.concepts != None:
             concepts = []
             concepts_mask = []
@@ -307,7 +310,7 @@ class SocialIqaInjProcessor(DataProcessor):
         self.D = [[], [], []]
         len_dict = Counter()
         for sid in range(2):
-            with open([os.path.join(data_dir, "train.jsonl"), os.path.join(data_dir, "dev.jsonl")][sid], "r") as f:
+            with open([os.path.join(data_dir, "train_cs.jsonl"), os.path.join(data_dir, "dev_cs.jsonl")][sid], "r") as f:
                 label_file = open(
                     [os.path.join(data_dir, "train-labels.lst"), os.path.join(data_dir, "dev-labels.lst")][sid], "r")
                 data = []
@@ -345,15 +348,17 @@ class SocialIqaInjProcessor(DataProcessor):
     def _create_examples(self, data, set_type):
         """Creates examples for the training and dev sets."""
         examples = []
+        # print(data[0])
         for (i, d) in enumerate(data):
             answer = str(data[i][-1])
 
             for k in range(3):
                 guid = "%s-%s-%s" % (set_type, i, k)
-                text_b = data[i][k + 1]
+                text_b = data[i][k * 2 + 1]
                 text_a = data[i][0]
                 examples.append(
-                    InputExample(guid=guid, text_a=text_a, text_b=text_b, label=answer))
+                    InputExample(guid=guid, text_a=text_a, text_b=text_b, label=answer,
+                                 concepts=data[i][k * 2 + 2]))
 
         return examples
 
