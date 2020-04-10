@@ -6,11 +6,11 @@ max_epochs: 8
 learning_rate: 2e-6
 adam_epsilon: 10e-8
 warmup_steps: 150
-batch_size: 4
-max_length: 128
+batch_size: 2
+max_length: 256
 formula: "goal -> sol1|sol2"
-train_x: "data/piqa/train-knowledge-first1000.jsonl"
-train_y: "data/piqa/train-labels-first1000.lst"
+train_x: "data/piqa/train-knowledge.jsonl"
+train_y: "data/piqa/train-labels.lst"
 val_x: "data/piqa/train-knowledge-last100.jsonl"
 val_y: "data/piqa/train-labels-last100.lst"
 infusion: "max"

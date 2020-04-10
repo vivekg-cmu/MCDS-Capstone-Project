@@ -31,7 +31,7 @@ def train(config):
         accumulate_grad_batches=config["accumulate_grad_batches"],
         max_epochs=config["max_epochs"],
         min_epochs=1,
-        val_check_interval=0.05,
+        val_check_interval=0.5,
         log_save_interval=100,
         row_log_interval=1,
         distributed_backend = "ddp",

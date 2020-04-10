@@ -46,35 +46,48 @@ class Classifier(pl.LightningModule):
         self.classifier.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
         self.classifier.bias.data.zero_()
 
+        # if self.infusion == "wsum":
+        #     self.weight_layer = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
+        #     self.weight_layer.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
+        #     self.weight_layer.bias.data.zero_()
+
     def forward(self, batch):
 
         assert len(batch["input_ids"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
+        # print('before: batch["token_type_ids"]:', batch["token_type_ids"])
         batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
+        # print('after: batch["token_type_ids"]:', batch["token_type_ids"])
 
-        results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"], token_type_ids=batch["token_type_ids"])
-        print('batch["input_ids"]:', batch["input_ids"].shape)
-        print("batch labels:", batch["labels"].shape)
+        results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
+                                token_type_ids=batch["token_type_ids"])
+        print('batch["input_ids"]:', batch["input_ids"])
+        print("batch labels:", batch["labels"])
 
         token_embeddings, *_ = results
-        print("tokken_embeddings:", token_embeddings.shape)
+        # print("tokken_embeddings:", token_embeddings.shape)
+        token_embeddings = token_embeddings.mean(dim=1)
+        # print("tokken_embeddings:", token_embeddings.shape)
         if self.infusion == "sum":
-            seq_len = token_embeddings.shape[1]
-            hidden_dim = token_embeddings.shape[2]
-            print("hidden_dim:", hidden_dim)
-            token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], seq_len, hidden_dim).sum(dim=1)
-        print("tokken_embeddings:", token_embeddings.shape)
-        logits = self.classifier(token_embeddings.mean(dim=1)).squeeze(dim=1)
-        print('logits.shape:', logits.shape)
+            # seq_len = token_embeddings.shape[1]
+            hidden_dim = token_embeddings.shape[1]
+            # print("hidden_dim:", hidden_dim)
+            token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
+            # print("tokken_embeddings:", token_embeddings.shape)
+        # elif self.infusion == "wsum":
+        #     weights = self.weight_layer(token_embeddings)
+
+        logits = self.classifier(token_embeddings).squeeze(dim=1)
+        # print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
-            print('logits.shape:', logits.shape)
+            # print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
 
-        print('logits.shape:', logits.shape)
+        # print('logits.shape:', logits.shape)
 
         return logits
 
@@ -88,9 +101,9 @@ class Classifier(pl.LightningModule):
             "loss": loss
         }
 
-    def training_epoch_end(self, outputs):
-        print("")
-        return {}
+    # def training_epoch_end(self, outputs):
+    #     print("")
+    #     return {}
 
     def validation_step(self, batch, batch_idx):
         logits = self.forward(batch)
@@ -112,7 +125,7 @@ class Classifier(pl.LightningModule):
             'val_loss': val_loss_mean,
             "progress_bar": {
                 'val_loss': val_loss_mean,
-                "val_accuracy": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
+                "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
             }
         }
 
@@ -126,7 +139,6 @@ class Classifier(pl.LightningModule):
 
     @pl.data_loader
     def train_dataloader(self):
-
         return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]),
                           batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
@@ -157,9 +169,6 @@ class Classifier(pl.LightningModule):
         def warpper(row):
 
             context, choice_names = formula.split("->")
-            # (context + question -> answerA|answerB|answerC)
-            # (obs1 + obs2 -> hyp1|hyp2)
-            # (ctx_a + ctx_b -> ending_options)
             # (goal -> sol1|sol2)
             context = context.split("+")
             choice_names = choice_names.split("|")
@@ -189,12 +198,13 @@ class Classifier(pl.LightningModule):
         num_choice = len(examples[0]["text"])
         if "infusion" in self.hparams and self.hparams["infusion"] != "concat":
             num_choice //= self.hparams["k"]
+        print([len(example["text"]) for example in examples])
 
         pairs = [pair for example in examples for pair in example["text"]]
         results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                    max_length=self.hparams["max_length"], return_tensors='pt',
                                                    return_attention_masks=True, pad_to_max_length=True)
-        print(results["input_ids"].shape[0])
+        print('results["input_ids"].shape:', results["input_ids"].shape)
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
@@ -226,6 +236,8 @@ if __name__ == "__main__":
     print(df.head())
     print(df['text'][0])
     print(df[["text", "label"]].to_dict("records")[:2])
-    instances = df[["text", "label"]].to_dict("records")
-    print(len(instances))
-    print(len(instances[0]['text']))
+    dataset = ClassificationDataset(df[["text", "label"]].to_dict("records"))
+    print(len(dataset.instances[0]['text']))
+    ll = [len(d['text']) for d in dataset.instances]
+    print(ll)
+    print(sum(ll) / len(ll))
