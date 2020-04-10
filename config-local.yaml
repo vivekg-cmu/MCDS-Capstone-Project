@@ -15,3 +15,4 @@ val_x: "data/piqa/train-knowledge-last100.jsonl"
 val_y: "data/piqa/train-labels-last100.lst"
 infusion: "max"
 k: 2
+gpu: 0

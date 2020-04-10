@@ -39,7 +39,7 @@ class Classifier(pl.LightningModule):
         self.embedder.train()
         self.label_offset = 0
         self.classifier = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
-        print(self.classifier)
+        print("batch size:", self.hparams["batch_size"])
 
         self.loss = nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
 
@@ -123,6 +123,7 @@ class Classifier(pl.LightningModule):
         val_labels = torch.cat([o["val_batch_labels"] for o in outputs])
         return {
             'val_loss': val_loss_mean,
+            "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0),
             "progress_bar": {
                 'val_loss': val_loss_mean,
                 "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
@@ -204,7 +205,7 @@ class Classifier(pl.LightningModule):
         results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                    max_length=self.hparams["max_length"], return_tensors='pt',
                                                    return_attention_masks=True, pad_to_max_length=True)
-        print('results["input_ids"].shape:', results["input_ids"].shape)
+        # print('results["input_ids"].shape:', results["input_ids"].shape)
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
