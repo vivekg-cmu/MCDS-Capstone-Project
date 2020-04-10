@@ -63,7 +63,7 @@ class Classifier(pl.LightningModule):
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
-        print('batch["input_ids"]:', batch["input_ids"])
+        print('batch["input_ids"].shape:', batch["input_ids"].shape)
         print("batch labels:", batch["labels"])
 
         token_embeddings, *_ = results
@@ -141,7 +141,7 @@ class Classifier(pl.LightningModule):
     @pl.data_loader
     def train_dataloader(self):
         return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]),
-                          batch_size=self.hparams["batch_size"], collate_fn=self.collate)
+                          batch_size=self.hparams["batch_size"], collate_fn=self.collate, shuffle=True)
 
     @pl.data_loader
     def val_dataloader(self):
@@ -152,6 +152,7 @@ class Classifier(pl.LightningModule):
     def dataloader(self, x_path: Union[str, pathlib.Path], y_path: Union[str, pathlib.Path] = None):
         print("x_path:", x_path)
         df = pd.read_json(x_path, lines=True)
+        print("x shape:", df.shape)
         if y_path:
             labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
             self.label_offset = np.asarray(labels).min()
@@ -199,7 +200,7 @@ class Classifier(pl.LightningModule):
         num_choice = len(examples[0]["text"])
         if "infusion" in self.hparams and self.hparams["infusion"] != "concat":
             num_choice //= self.hparams["k"]
-        print([len(example["text"]) for example in examples])
+#         print([len(example["text"]) for example in examples])
 
         pairs = [pair for example in examples for pair in example["text"]]
         results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,

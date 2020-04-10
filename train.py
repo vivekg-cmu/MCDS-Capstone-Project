@@ -10,8 +10,8 @@ from model import Classifier
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 
-# @hydra.main(config_path="config-local.yaml")
-@hydra.main(config_path="config.yaml")
+@hydra.main(config_path="config-local.yaml")
+# @hydra.main(config_path="config.yaml")
 def train(config):
 
     logger.info(config)
