@@ -1,3 +1,6 @@
+Download the comet annotate social IQA dataset from here: `https://drive.google.com/drive/folders/1nudYUZh5WGWK0410q15OoWYmk8ladWwM?usp=sharing`
+
+
 To run a generation experiment (either conceptnet or atomic), follow these instructions:
 
 
