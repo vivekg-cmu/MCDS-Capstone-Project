@@ -90,8 +90,10 @@ class Classifier(pl.LightningModule):
         val_labels = torch.cat([o["val_batch_labels"] for o in outputs])
         return {
             'val_loss': val_loss_mean,
+            "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0),
             "progress_bar": {
-                "val_accuracy": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
+                'val_loss': val_loss_mean,
+                "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0)
             }
         }
 
@@ -105,7 +107,6 @@ class Classifier(pl.LightningModule):
 
     @pl.data_loader
     def train_dataloader(self):
-
         return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]), batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
     @pl.data_loader
