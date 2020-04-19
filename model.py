@@ -58,12 +58,15 @@ class Classifier(pl.LightningModule):
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
         # print('before: batch["token_type_ids"]:', batch["token_type_ids"])
-        batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
-        # print('after: batch["token_type_ids"]:', batch["token_type_ids"])
+        if "roberta" in self.hparams["model"]:
+            self.embedder.embeddings.token_type_embeddings = nn.Embedding(2, self.embedder.config.hidden_size)
+        # batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
+        print('after: batch["token_type_ids"]:', batch["token_type_ids"])
+        print('after: batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
-        print('batch["input_ids"]:', batch["input_ids"])
+        print('batch["input_ids"]:', batch["input_ids"].shape)
         print("batch labels:", batch["labels"])
 
         token_embeddings, *_ = results
@@ -100,10 +103,6 @@ class Classifier(pl.LightningModule):
         return {
             "loss": loss
         }
-
-    # def training_epoch_end(self, outputs):
-    #     print("")
-    #     return {}
 
     def validation_step(self, batch, batch_idx):
         logits = self.forward(batch)
@@ -199,7 +198,7 @@ class Classifier(pl.LightningModule):
         num_choice = len(examples[0]["text"])
         if "infusion" in self.hparams and self.hparams["infusion"] != "concat":
             num_choice //= self.hparams["k"]
-        print([len(example["text"]) for example in examples])
+        # print([len(example["text"]) for example in examples])
 
         pairs = [pair for example in examples for pair in example["text"]]
         results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
