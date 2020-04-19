@@ -11,6 +11,7 @@ import numpy as np
 from loguru import logger
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoModel, AutoTokenizer, AdamW, get_linear_schedule_with_warmup
 
 class ClassificationDataset(Dataset):
@@ -63,8 +64,8 @@ class Classifier(pl.LightningModule):
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
-        print('batch["input_ids"].shape:', batch["input_ids"].shape)
-        print("batch labels:", batch["labels"])
+#         print('batch["input_ids"]:', batch["input_ids"].shape)
+#         print("batch labels:", batch["labels"])
 
         token_embeddings, *_ = results
         # print("tokken_embeddings:", token_embeddings.shape)
@@ -140,19 +141,27 @@ class Classifier(pl.LightningModule):
 
     @pl.data_loader
     def train_dataloader(self):
-        return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]),
-                          batch_size=self.hparams["batch_size"], collate_fn=self.collate, shuffle=True)
+#         print("train loader")
+        dataset = self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"])
+        sampler = None
+#         sampler = DistributedSampler(dataset)
+        return DataLoader(dataset, batch_size=self.hparams["batch_size"],
+                          shuffle=(sampler is None), 
+                          drop_last=True,
+                          sampler=sampler, 
+                          collate_fn=self.collate)
 
     @pl.data_loader
     def val_dataloader(self):
+#         print("val loader")
         return DataLoader(self.dataloader(self.root_path / self.hparams["val_x"], self.root_path / self.hparams["val_y"]),
-                          batch_size=self.hparams["batch_size"], collate_fn=self.collate)
+                          batch_size=self.hparams["batch_size"], collate_fn=self.collate, shuffle=False)
 
 
     def dataloader(self, x_path: Union[str, pathlib.Path], y_path: Union[str, pathlib.Path] = None):
         print("x_path:", x_path)
         df = pd.read_json(x_path, lines=True)
-        print("x shape:", df.shape)
+#         print("x shape:", df.shape)
         if y_path:
             labels = pd.read_csv(y_path, sep='\t', header=None).values.tolist()
             self.label_offset = np.asarray(labels).min()
