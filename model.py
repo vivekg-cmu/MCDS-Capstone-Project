@@ -2,7 +2,6 @@ import os
 import pathlib
 from typing import *
 from itertools import cycle, chain
-from more_itertools import split_after
 
 import torch
 import pytorch_lightning as pl
@@ -33,7 +32,7 @@ class Classifier(pl.LightningModule):
         super().__init__()
         self.hparams = config
         self.infusion = None if "infusion" not in self.hparams else self.hparams["infusion"]
-        self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k </s> q </s> a" so will have 3 type of tokens
+        self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k / q / a" so will have 3 type of tokens
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache")
         self.tokenizer = AutoTokenizer.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
@@ -48,6 +47,7 @@ class Classifier(pl.LightningModule):
         self.classifier.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
         self.classifier.bias.data.zero_()
 
+        # TODO: wsum
         # if self.infusion == "wsum":
         #     self.weight_layer = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
         #     self.weight_layer.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
@@ -60,7 +60,7 @@ class Classifier(pl.LightningModule):
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
         self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
-        # batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
+        # TODO: initialization?
         print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
         print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
 
@@ -70,27 +70,26 @@ class Classifier(pl.LightningModule):
         print("batch labels:", batch["labels"])
 
         token_embeddings, *_ = results
-        # print("tokken_embeddings:", token_embeddings.shape)
+        print("tokken_embeddings:", token_embeddings.shape)
         token_embeddings = token_embeddings.mean(dim=1)
-        # print("tokken_embeddings:", token_embeddings.shape)
+        print("tokken_embeddings:", token_embeddings.shape)
         if self.infusion == "sum":
-            # seq_len = token_embeddings.shape[1]
             hidden_dim = token_embeddings.shape[1]
             # print("hidden_dim:", hidden_dim)
             token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
-            # print("tokken_embeddings:", token_embeddings.shape)
+            print("tokken_embeddings:", token_embeddings.shape)
         # elif self.infusion == "wsum":
         #     weights = self.weight_layer(token_embeddings)
 
         logits = self.classifier(token_embeddings).squeeze(dim=1)
-        # print('logits.shape:', logits.shape)
+        print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
-            # print('logits.shape:', logits.shape)
+            print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
 
-        # print('logits.shape:', logits.shape)
+        print('logits.shape:', logits.shape)
 
         return logits
 
@@ -217,19 +216,19 @@ class Classifier(pl.LightningModule):
         # print([len(example["text"]) for example in examples])
 
         if "infusion" in self.hparams:
-            concated_triplets = [tokenizer.sep_token.join(triplet) for example in examples for triplet in example["text"]]
+            concated_triplets = [self.tokenizer.sep_token.join(triplet) for example in examples for triplet in example["text"]]
             results = self.tokenizer.batch_encode_plus(concated_triplets, add_special_tokens=True,
-                                                  max_length=self.hparams["max_length"], return_tensors='pt',
-                                                  return_attention_masks=True, pad_to_max_length=True)
-            results["token_type_ids"] = [torch.tensor(self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3))
-                                         for input_ids in results["input_ids"]]
+                                                       max_length=self.hparams["max_length"], return_tensors='pt',
+                                                       return_attention_masks=True, pad_to_max_length=True)
+            results["token_type_ids"] = torch.tensor([self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3)
+                                         for input_ids in results["input_ids"]])
         else:
             pairs = [pair for example in examples for pair in example["text"]]
             results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                        max_length=self.hparams["max_length"], return_tensors='pt',
                                                        return_attention_masks=True, pad_to_max_length=True)
         print('results["input_ids"].shape:', results["input_ids"].shape)
-        print('results["token_type_ids"]:', results["token_type_ids"])
+        print('results["token_type_ids"]:', type(results["token_type_ids"]))
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
@@ -304,20 +303,3 @@ if __name__ == "__main__":
     print(ttids)
     print(list(get_seg_lens(input_ids[0], tokenizer.sep_token_id, 3)))
     print(torch.tensor(ttids))
-
-
-# ("knowledge question answer", "knowledge question answer 2")
-#     [101, 1293, 1106, 1294, 22591, 6112, 16399, 1116, 102, 139,
-#      15432, 22591, 6112, 8672, 1468, 1114, 13552, 2949, 1105, 188,
-#      1643, 4854, 12767, 1114, 6870, 117, 18700, 1105, 9490, 3152,
-#      7317, 1183, 119, 3299, 1114, 17053, 25138, 1105, 188, 8167,
-#      23372, 1174, 22572, 23372, 1813, 119, 18757, 2391, 126, 1904,
-#      1120, 3434, 4842, 143, 119, 102, 0, 0, 0, 0]
-#     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-#      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-#      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-#     [4919, 284, 787, 2603, 10872, 48813, 9414, 1530, 2603, 10872, 8469, 364, 351, 19450, 3056, 290, 45799, 351, 8268,
-#      11, 13385, 290, 16577, 8278, 6874, 13, 5849, 351, 26790, 26876, 290, 37624, 269, 44937, 13, 38493, 642, 2431, 379,
-#      7337, 7370, 376, 13]
-#     [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-#      1, 1, 1, 1, 1]
