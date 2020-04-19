@@ -13,5 +13,5 @@ train_x: "data/piqa/train-knowledge-last100.jsonl"
 train_y: "data/piqa/train-labels-last100.lst"
 val_x: "data/piqa/train-knowledge-last100.jsonl"
 val_y: "data/piqa/train-labels-last100.lst"
-#infusion: "max"
-#k: 2
+infusion: "concat"
+k: 2

@@ -2,6 +2,7 @@ import os
 import pathlib
 from typing import *
 from itertools import cycle, chain
+from more_itertools import split_after
 
 import torch
 import pytorch_lightning as pl
@@ -32,6 +33,7 @@ class Classifier(pl.LightningModule):
         super().__init__()
         self.hparams = config
         self.infusion = None if "infusion" not in self.hparams else self.hparams["infusion"]
+        self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k </s> q </s> a" so will have 3 type of tokens
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache")
         self.tokenizer = AutoTokenizer.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
@@ -57,12 +59,10 @@ class Classifier(pl.LightningModule):
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
-        # print('before: batch["token_type_ids"]:', batch["token_type_ids"])
-        if "roberta" in self.hparams["model"]:
-            self.embedder.embeddings.token_type_embeddings = nn.Embedding(2, self.embedder.config.hidden_size)
+        self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
         # batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
-        print('after: batch["token_type_ids"]:', batch["token_type_ids"])
-        print('after: batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
+        print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
+        print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
@@ -147,7 +147,6 @@ class Classifier(pl.LightningModule):
         return DataLoader(self.dataloader(self.root_path / self.hparams["val_x"], self.root_path / self.hparams["val_y"]),
                           batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
-
     def dataloader(self, x_path: Union[str, pathlib.Path], y_path: Union[str, pathlib.Path] = None):
         print("x_path:", x_path)
         df = pd.read_json(x_path, lines=True)
@@ -161,7 +160,6 @@ class Classifier(pl.LightningModule):
         df["text"] = df.apply(self.transform(self.hparams["formula"], k, infusion_type), axis=1)
         print(df.head())  # 'goal': goal, 'text': [(goal, sol1), (goal, sol2)]
         return ClassificationDataset(df[["text", "label"]].to_dict("records"))
-
 
     @staticmethod
     def transform(formula, k=None, infusion=None):
@@ -177,12 +175,11 @@ class Classifier(pl.LightningModule):
 
             if infusion == 'concat':
                 knowledges = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
-                context_choices = [context + " " + choice for choice in choices]
-                return list(zip(knowledges, context_choices))
+                return list(zip(knowledges, cycle([context]), choices))
             elif infusion == "max" or infusion == "sum":
                 knowledges = [row[x.strip()+'_knowledge'][:k] for x in choice_names]
-                context_choices = [context + " " + choice for choice in choices]
-                k_context_choices = [zip(knowledge, cycle([cc])) for knowledge, cc in zip(knowledges, context_choices)]
+                k_context_choices = [zip(knowledge, cycle([context]), cycle([choice])) for knowledge, choice
+                                     in zip(knowledges, choices)]
                 return list(chain.from_iterable(k_context_choices))
             elif not infusion:
                 return list(zip(cycle([context]), choices))
@@ -191,6 +188,25 @@ class Classifier(pl.LightningModule):
 
         return warpper
 
+    @staticmethod
+    def get_token_type_ids(input_ids, sep_id, max_segs):
+        token_type_ids = []
+        ctn, token_type = 0, 0
+        for idx, input_id in enumerate(input_ids):
+            ctn += 1
+            if input_id == sep_id:
+                token_type_ids += [token_type for _ in range(ctn)]
+                ctn = 0
+                token_type += 1
+                max_segs -= 1
+                if max_segs == 1:
+                    # only one seg left, so add type ids of the rest directly
+                    rest_len = len(input_ids) - (idx + 1)
+                    token_type_ids += [token_type for _ in range(rest_len)]
+                    return token_type_ids
+        if ctn != 0:
+            token_type_ids += [token_type for _ in range(ctn)]
+        return token_type_ids
 
     def collate(self, examples):
 
@@ -200,11 +216,20 @@ class Classifier(pl.LightningModule):
             num_choice //= self.hparams["k"]
         # print([len(example["text"]) for example in examples])
 
-        pairs = [pair for example in examples for pair in example["text"]]
-        results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
-                                                   max_length=self.hparams["max_length"], return_tensors='pt',
-                                                   return_attention_masks=True, pad_to_max_length=True)
-        # print('results["input_ids"].shape:', results["input_ids"].shape)
+        if "infusion" in self.hparams:
+            concated_triplets = [tokenizer.sep_token.join(triplet) for example in examples for triplet in example["text"]]
+            results = self.tokenizer.batch_encode_plus(concated_triplets, add_special_tokens=True,
+                                                  max_length=self.hparams["max_length"], return_tensors='pt',
+                                                  return_attention_masks=True, pad_to_max_length=True)
+            results["token_type_ids"] = [torch.tensor(self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3))
+                                         for input_ids in results["input_ids"]]
+        else:
+            pairs = [pair for example in examples for pair in example["text"]]
+            results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
+                                                       max_length=self.hparams["max_length"], return_tensors='pt',
+                                                       return_attention_masks=True, pad_to_max_length=True)
+        print('results["input_ids"].shape:', results["input_ids"].shape)
+        print('results["token_type_ids"]:', results["token_type_ids"])
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
@@ -238,6 +263,61 @@ if __name__ == "__main__":
     print(df[["text", "label"]].to_dict("records")[:2])
     dataset = ClassificationDataset(df[["text", "label"]].to_dict("records"))
     print(len(dataset.instances[0]['text']))
-    ll = [len(d['text']) for d in dataset.instances]
-    print(ll)
-    print(sum(ll) / len(ll))
+    # ll = [len(d['text']) for d in dataset.instances]
+    # print(ll)
+    # print(sum(ll) / len(ll))
+
+    tokenizer = AutoTokenizer.from_pretrained("roberta-large", cache_dir="model_cache", use_fast=False)
+    examples = dataset.instances[:4]
+    concated_triplets = [tokenizer.sep_token.join(triplet) for example in examples for triplet in example["text"]]
+    print(concated_triplets)
+    # concated_triplets = ["knowledge </s> question </s> answer", "knowledge </s> question </s> answer right"]
+    res = tokenizer.batch_encode_plus(concated_triplets,
+                                      add_special_tokens=True,
+                                      max_length=256, return_tensors='pt',
+                                      return_attention_masks=True, pad_to_max_length=True
+                                      )
+    print(type(res["token_type_ids"]))
+    print(res)
+    print(tokenizer.sep_token_id)
+    input_ids = res["input_ids"]
+
+    "<s> knowledge </s> question </s> answer </s>"
+    "0 xxx 2 xxx 2 xxx 2 1"
+    def get_seg_lens(input_ids, sep_id, max_segs):
+        ctn = 0
+        for idx, input_id in enumerate(input_ids):
+            ctn += 1
+            if input_id == sep_id:
+                yield ctn
+                ctn = 0
+                max_segs -= 1
+                if max_segs == 1:
+                    # only one seg left, so calculate the length directly
+                    yield len(input_ids) - (idx + 1)
+                    return
+        if ctn != 0:
+            yield ctn
+
+    print(input_ids[0])
+    ttids = Classifier.get_token_type_ids(input_ids[0], tokenizer.sep_token_id, 3)
+    print(ttids)
+    print(list(get_seg_lens(input_ids[0], tokenizer.sep_token_id, 3)))
+    print(torch.tensor(ttids))
+
+
+# ("knowledge question answer", "knowledge question answer 2")
+#     [101, 1293, 1106, 1294, 22591, 6112, 16399, 1116, 102, 139,
+#      15432, 22591, 6112, 8672, 1468, 1114, 13552, 2949, 1105, 188,
+#      1643, 4854, 12767, 1114, 6870, 117, 18700, 1105, 9490, 3152,
+#      7317, 1183, 119, 3299, 1114, 17053, 25138, 1105, 188, 8167,
+#      23372, 1174, 22572, 23372, 1813, 119, 18757, 2391, 126, 1904,
+#      1120, 3434, 4842, 143, 119, 102, 0, 0, 0, 0]
+#     [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+#      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+#      1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+#     [4919, 284, 787, 2603, 10872, 48813, 9414, 1530, 2603, 10872, 8469, 364, 351, 19450, 3056, 290, 45799, 351, 8268,
+#      11, 13385, 290, 16577, 8278, 6874, 13, 5849, 351, 26790, 26876, 290, 37624, 269, 44937, 13, 38493, 642, 2431, 379,
+#      7337, 7370, 376, 13]
+#     [0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+#      1, 1, 1, 1, 1]
