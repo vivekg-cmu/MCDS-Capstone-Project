@@ -11,6 +11,7 @@ import numpy as np
 from loguru import logger
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
 from transformers import AutoModel, AutoTokenizer, AdamW, get_linear_schedule_with_warmup
 
 class ClassificationDataset(Dataset):
@@ -138,13 +139,20 @@ class Classifier(pl.LightningModule):
 
     @pl.data_loader
     def train_dataloader(self):
-        return DataLoader(self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"]),
-                          batch_size=self.hparams["batch_size"], collate_fn=self.collate)
+        dataset = self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"])
+        sampler = None
+#         sampler = DistributedSampler(dataset)
+        return DataLoader(dataset, batch_size=self.hparams["batch_size"],
+                          shuffle=(sampler is None),
+                          drop_last=True,
+                          sampler=sampler,
+                          collate_fn=self.collate)
 
     @pl.data_loader
     def val_dataloader(self):
-        return DataLoader(self.dataloader(self.root_path / self.hparams["val_x"], self.root_path / self.hparams["val_y"]),
-                          batch_size=self.hparams["batch_size"], collate_fn=self.collate)
+        dataset = self.dataloader(self.root_path / self.hparams["val_x"], self.root_path / self.hparams["val_y"])
+        return DataLoader(dataset, batch_size=self.hparams["batch_size"],
+                          collate_fn=self.collate, shuffle=False)
 
     def dataloader(self, x_path: Union[str, pathlib.Path], y_path: Union[str, pathlib.Path] = None):
         print("x_path:", x_path)
