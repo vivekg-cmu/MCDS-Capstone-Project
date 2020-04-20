@@ -26,6 +26,8 @@ data
 
 Modify `config.yaml` as you like and run `python train.py` to train a model. It loads the config file and outputs all the logs/checkpoints in `outputs`
 
+Run `python train.py --config_path config.yaml`
+
 ## Eval
 
 ### Get predictions without evaluation
