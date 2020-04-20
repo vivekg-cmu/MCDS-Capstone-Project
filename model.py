@@ -60,7 +60,8 @@ class Classifier(pl.LightningModule):
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
-        self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
+        self.embedder.embeddings.token_type_embeddings = nn.Embedding(
+            self.type_vocab_size, self.embedder.config.hidden_size).to(batch["input_ids"].deivice)
         # TODO: initialization?
         print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
         print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
