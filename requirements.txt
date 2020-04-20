@@ -1,6 +1,6 @@
 pandas==0.25.3
 numpy==1.17.4
-pytorch_lightning==0.6.0
+pytorch_lightning==0.7.3
 hydra_core==0.11.3
 loguru==0.4.1
 torch==1.4.0
