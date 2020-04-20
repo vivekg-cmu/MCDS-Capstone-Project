@@ -1,4 +1,3 @@
-import os
 import pathlib
 from typing import *
 from itertools import cycle, chain
@@ -141,13 +140,14 @@ class Classifier(pl.LightningModule):
     @pl.data_loader
     def train_dataloader(self):
         dataset = self.dataloader(self.root_path / self.hparams["train_x"], self.root_path / self.hparams["train_y"])
-        sampler = None
-#         sampler = DistributedSampler(dataset)
-        return DataLoader(dataset, batch_size=self.hparams["batch_size"],
-                          shuffle=(sampler is None),
-                          drop_last=True,
-                          sampler=sampler,
-                          collate_fn=self.collate)
+#         sampler = None
+# #         sampler = DistributedSampler(dataset)
+#         return DataLoader(dataset, batch_size=self.hparams["batch_size"],
+#                           shuffle=(sampler is None),
+#                           drop_last=True,
+#                           sampler=sampler,
+#                           collate_fn=self.collate)
+        return DataLoader(dataset, batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
     @pl.data_loader
     def val_dataloader(self):
