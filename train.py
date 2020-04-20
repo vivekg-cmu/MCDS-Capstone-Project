@@ -26,7 +26,8 @@ def train(config):
     infusion = None if "infusion" not in config else config["infusion"]
     k = None if "k" not in config else config["k"]
     train_data_portion = "partial" if "last" in config["train_x"] else "full"
-    ckpt_callback = ModelCheckpoint(filepath="ckpts/infusion{}-k{}-{}/".format(infusion, k, train_data_portion), 
+    ckpt_callback = ModelCheckpoint(filepath="ckpts/infusion{}-k{}-{}-precision{}/".format(
+                                        infusion, k, train_data_portion, config["precision"]), 
                                     monitor='val_acc', mode='max', verbose=True, save_top_k=1, period=0)
     trainer = Trainer(
         gradient_clip_val = 0,

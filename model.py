@@ -29,12 +29,12 @@ class ClassificationDataset(Dataset):
 
 class Classifier(pl.LightningModule):
 
-    def __init__(self, config):
+    def __init__(self, hparams):
         super().__init__()
-        self.hparams = config
+        self.hparams = hparams
         self.root_path = pathlib.Path(__file__).parent.absolute()
-        self.embedder = AutoModel.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache")
-        self.tokenizer = AutoTokenizer.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
+        self.embedder = AutoModel.from_pretrained(self.hparams["model"], cache_dir=self.root_path / "model_cache")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
 
         self.embedder.train()
         self.label_offset = 0
