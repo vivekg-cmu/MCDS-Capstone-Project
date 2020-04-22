@@ -1,4 +1,7 @@
 data/
+ckpts/
+lightning_logs/
+*temp*
 
 *truth
 *tsv
