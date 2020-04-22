@@ -41,6 +41,7 @@ class Classifier(pl.LightningModule):
         self.label_offset = 0
         self.classifier = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
 #         print("batch size:", self.hparams["batch_size"])
+        self.dropout = nn.Dropout(hparams["dropout"])
 
         self.loss = nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
 
@@ -73,17 +74,18 @@ class Classifier(pl.LightningModule):
 
         token_embeddings, *_ = results
 #         print("tokken_embeddings:", token_embeddings.shape)
-        token_embeddings = token_embeddings.mean(dim=1)
-#         print("tokken_embeddings:", token_embeddings.shape)
+        output = token_embeddings.mean(dim=1)
+#         print("output:", output.shape)
         if self.infusion == "sum":
-            hidden_dim = token_embeddings.shape[1]
+            hidden_dim = output.shape[1]
             # print("hidden_dim:", hidden_dim)
-            token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
-#             print("tokken_embeddings:", token_embeddings.shape)
+            output = output.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
+#             print("output:", output.shape)
         # elif self.infusion == "wsum":
-        #     weights = self.weight_layer(token_embeddings)
+        #     weights = self.weight_layer(output)
 
-        logits = self.classifier(token_embeddings).squeeze(dim=1)
+        output = self.dropout(output)
+        logits = self.classifier(output).squeeze(dim=1)
 #         print('logits.shape:', logits.shape)
 
         if self.infusion == "max":

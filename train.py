@@ -26,9 +26,15 @@ def train(config):
     infusion = None if "infusion" not in config else config["infusion"]
     k = None if "k" not in config else config["k"]
     train_data_portion = "partial" if "last" in config["train_x"] else "full"
-    ckpt_callback = ModelCheckpoint(filepath="ckpts/infusion{}-k{}-{}-precision{}/".format(
-                                        infusion, k, train_data_portion, config["precision"]),
-                                    monitor='val_acc', mode='max', verbose=True, save_top_k=1, period=0)
+    if "checkpoint" in config:
+        resume = config["checkpoint"].split("/")[-1].split("_")[0]
+        filepath = "ckpts/infusion{}-k{}-{}-precision{}-resume{}/".format(
+            infusion, k, train_data_portion, config["precision"], resume)
+    else:
+        filepath = "ckpts/infusion{}-k{}-{}-precision{}/".format(
+            infusion, k, train_data_portion, config["precision"])
+    ckpt_callback = ModelCheckpoint(filepath=filepath, monitor='val_acc', 
+                                    mode='max', verbose=True, save_top_k=1, period=0)
     trainer = Trainer(
         gradient_clip_val=0,
         num_nodes=1,
@@ -44,10 +50,11 @@ def train(config):
         val_check_interval=0.25,
         checkpoint_callback=ckpt_callback,
         gpus=None if not torch.cuda.is_available() else [i for i in range(torch.cuda.device_count())],
+        dropout=config["dropout"],
         distributed_backend="ddp",
         precision=config["precision"],
         amp_level='O2',
-        resume_from_checkpoint=None,
+        resume_from_checkpoint=None if "checkpoint" not in config else config["checkpoint"]
     )
     trainer.fit(model)
 
