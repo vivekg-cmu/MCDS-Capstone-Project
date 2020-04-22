@@ -28,19 +28,19 @@ class ClassificationDataset(Dataset):
 
 class Classifier(pl.LightningModule):
 
-    def __init__(self, config):
+    def __init__(self, hparams):
         super().__init__()
-        self.hparams = config
+        self.hparams = hparams
         self.infusion = None if "infusion" not in self.hparams else self.hparams["infusion"]
         self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k / q / a" so will have 3 type of tokens
         self.root_path = pathlib.Path(__file__).parent.absolute()
-        self.embedder = AutoModel.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache")
-        self.tokenizer = AutoTokenizer.from_pretrained(config["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
+        self.embedder = AutoModel.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache")
+        self.tokenizer = AutoTokenizer.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
 
         self.embedder.train()
         self.label_offset = 0
         self.classifier = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
-        print("batch size:", self.hparams["batch_size"])
+#         print("batch size:", self.hparams["batch_size"])
 
         self.loss = nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
 
@@ -59,38 +59,39 @@ class Classifier(pl.LightningModule):
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
-        self.embedder.embeddings.token_type_embeddings = nn.Embedding(
-            self.type_vocab_size, self.embedder.config.hidden_size).to(batch["input_ids"].deivice)
+#         self.embedder.embeddings.token_type_embeddings = nn.Embedding(
+#             self.type_vocab_size, self.embedder.config.hidden_size).to(batch["input_ids"].device)
+        batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
         # TODO: initialization?
-        print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
-        print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
+#         print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
+#         print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
-        print('batch["input_ids"]:', batch["input_ids"].shape)
-        print("batch labels:", batch["labels"])
+#         print('batch["input_ids"]:', batch["input_ids"].shape)
+#         print("batch labels:", batch["labels"])
 
         token_embeddings, *_ = results
-        print("tokken_embeddings:", token_embeddings.shape)
+#         print("tokken_embeddings:", token_embeddings.shape)
         token_embeddings = token_embeddings.mean(dim=1)
-        print("tokken_embeddings:", token_embeddings.shape)
+#         print("tokken_embeddings:", token_embeddings.shape)
         if self.infusion == "sum":
             hidden_dim = token_embeddings.shape[1]
             # print("hidden_dim:", hidden_dim)
             token_embeddings = token_embeddings.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
-            print("tokken_embeddings:", token_embeddings.shape)
+#             print("tokken_embeddings:", token_embeddings.shape)
         # elif self.infusion == "wsum":
         #     weights = self.weight_layer(token_embeddings)
 
         logits = self.classifier(token_embeddings).squeeze(dim=1)
-        print('logits.shape:', logits.shape)
+#         print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
-            print('logits.shape:', logits.shape)
+#             print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
 
-        print('logits.shape:', logits.shape)
+#         print('logits.shape:', logits.shape)
 
         return logits
 
@@ -120,6 +121,7 @@ class Classifier(pl.LightningModule):
         val_loss_mean = torch.stack([o['val_loss'] for o in outputs]).mean()
         val_logits = torch.cat([o["val_batch_logits"] for o in outputs])
         val_labels = torch.cat([o["val_batch_labels"] for o in outputs])
+        
         return {
             'val_loss': val_loss_mean,
             "val_acc": torch.sum(val_labels == torch.argmax(val_logits, dim=1)) / (val_labels.shape[0] * 1.0),
@@ -144,9 +146,10 @@ class Classifier(pl.LightningModule):
 # #         sampler = DistributedSampler(dataset)
 #         return DataLoader(dataset, batch_size=self.hparams["batch_size"],
 #                           shuffle=(sampler is None),
-#                           drop_last=True,
+#                           drop_last=(sampler is None),
 #                           sampler=sampler,
-#                           collate_fn=self.collate)
+#                           collate_fn=self.collate, 
+#                           num_workers=4)
         return DataLoader(dataset, batch_size=self.hparams["batch_size"], collate_fn=self.collate)
 
     @pl.data_loader
@@ -236,8 +239,8 @@ class Classifier(pl.LightningModule):
             results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                        max_length=self.hparams["max_length"], return_tensors='pt',
                                                        return_attention_masks=True, pad_to_max_length=True)
-        print('results["input_ids"].shape:', results["input_ids"].shape)
-        print('results["token_type_ids"]:', type(results["token_type_ids"]))
+#         print('results["input_ids"].shape:', results["input_ids"].shape)
+#         print('results["token_type_ids"]:', type(results["token_type_ids"]))
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
