@@ -1,17 +1,18 @@
 task_name: physicaliqa
 model: "roberta-large"
 accumulate_grad_batches: 8
-use_amp: false  # Half precison only works best with volta architectures such as V100
+precision: 32  # Half precison only works best with volta architectures such as V100
 max_epochs: 8
 learning_rate: 2e-6
+dropout: 0
 adam_epsilon: 10e-8
 warmup_steps: 150
-batch_size: 8
-max_length: 256
+batch_size: 4
+max_length: 224
 formula: "goal -> sol1|sol2"
 train_x: "data/piqa/train-knowledge-last100.jsonl"
 train_y: "data/piqa/train-labels-last100.lst"
 val_x: "data/piqa/train-knowledge-last100.jsonl"
 val_y: "data/piqa/train-labels-last100.lst"
-infusion: "sum"
+infusion: "wsum"
 k: 2

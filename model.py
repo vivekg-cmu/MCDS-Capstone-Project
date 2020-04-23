@@ -49,10 +49,10 @@ class Classifier(pl.LightningModule):
         self.classifier.bias.data.zero_()
 
         # TODO: wsum
-        # if self.infusion == "wsum":
-        #     self.weight_layer = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
-        #     self.weight_layer.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
-        #     self.weight_layer.bias.data.zero_()
+        if self.infusion == "wsum":
+            self.weight_layer = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
+            self.weight_layer.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
+            self.weight_layer.bias.data.zero_()
 
     def forward(self, batch):
 
@@ -64,8 +64,8 @@ class Classifier(pl.LightningModule):
         #     self.type_vocab_size, self.embedder.config.hidden_size).to(batch["input_ids"].deivice)
         # TODO: initialization?
         batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
-        print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
-        print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
+        # print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
+        # print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
@@ -74,26 +74,35 @@ class Classifier(pl.LightningModule):
 
         token_embeddings, *_ = results
 #         print("tokken_embeddings:", token_embeddings.shape)
-        output = token_embeddings.mean(dim=1)
+        output = token_embeddings.mean(dim=1)  # average over all tokens, (b * 2 * k, h)
 #         print("output:", output.shape)
         if self.infusion == "sum":
             hidden_dim = output.shape[1]
             # print("hidden_dim:", hidden_dim)
             output = output.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
 #             print("output:", output.shape)
-        # elif self.infusion == "wsum":
-        #     weights = self.weight_layer(output)
+        elif self.infusion == "wsum":
+            weights = self.weight_layer(output)
+            weights = F.softmax(weights)
+            # print("weight:", weights.shape)
+            weights = weights.reshape(-1, 1, self.hparams["k"])
+            # print("weight:", weights.shape)
+
+            hidden_dim = output.shape[1]
+            output = output.reshape(-1, self.hparams["k"], hidden_dim)
+            # print("output:", output.shape)
+            output = torch.bmm(weights, output).squeeze(dim=1)
+            # print("output:", output.shape)
 
         output = self.dropout(output)
         logits = self.classifier(output).squeeze(dim=1)
-#         print('logits.shape:', logits.shape)
+        # print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
 #             print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
-
-#         print('logits.shape:', logits.shape)
+        # print('logits.shape:', logits.shape)
 
         return logits
 
@@ -189,7 +198,7 @@ class Classifier(pl.LightningModule):
             if infusion == 'concat':
                 knowledges = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 return list(zip(knowledges, cycle([context]), choices))
-            elif infusion == "max" or infusion == "sum":
+            elif infusion == "max" or infusion == "sum" or infusion == "wsum":
                 knowledges = [row[x.strip()+'_knowledge'][:k] for x in choice_names]
                 k_context_choices = [zip(knowledge, cycle([context]), cycle([choice])) for knowledge, choice
                                      in zip(knowledges, choices)]
@@ -227,15 +236,15 @@ class Classifier(pl.LightningModule):
         num_choice = len(examples[0]["text"])
         if "infusion" in self.hparams and self.hparams["infusion"] != "concat":
             num_choice //= self.hparams["k"]
-        # print([len(example["text"]) for example in examples])
 
         if "infusion" in self.hparams:
-            concated_triplets = [self.tokenizer.sep_token.join(triplet) for example in examples for triplet in example["text"]]
+            concated_triplets = [self.tokenizer.sep_token.join(triplet)
+                                 for example in examples for triplet in example["text"]]
             results = self.tokenizer.batch_encode_plus(concated_triplets, add_special_tokens=True,
                                                        max_length=self.hparams["max_length"], return_tensors='pt',
                                                        return_attention_masks=True, pad_to_max_length=True)
-            results["token_type_ids"] = torch.tensor([self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3)
-                                         for input_ids in results["input_ids"]])
+            # results["token_type_ids"] = torch.tensor([self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3)
+            #                                           for input_ids in results["input_ids"]])
         else:
             pairs = [pair for example in examples for pair in example["text"]]
             results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
