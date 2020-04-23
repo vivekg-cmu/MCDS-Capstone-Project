@@ -28,11 +28,11 @@ def train(config):
     train_data_portion = "partial" if "last" in config["train_x"] else "full"
     if "checkpoint" in config:
         resume = config["checkpoint"].split("/")[-1].split("_")[0]
-        filepath = "ckpts/infusion{}-k{}-{}-precision{}-resume{}/".format(
-            infusion, k, train_data_portion, config["precision"], resume)
+        filepath = "ckpts/infusion{}-k{}-{}-precision{}-dropout{}-resume{}/".format(
+            infusion, k, train_data_portion, config["precision"], config["dropout"], resume)
     else:
-        filepath = "ckpts/infusion{}-k{}-{}-precision{}/".format(
-            infusion, k, train_data_portion, config["precision"])
+        filepath = "ckpts/infusion{}-k{}-{}-precision{}-dropout{}/".format(
+            infusion, k, train_data_portion, config["precision"], config["dropout"])
     ckpt_callback = ModelCheckpoint(filepath=filepath, monitor='val_acc', 
                                     mode='max', verbose=True, save_top_k=1, period=0)
     trainer = Trainer(
