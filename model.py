@@ -48,11 +48,15 @@ class Classifier(pl.LightningModule):
         self.classifier.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
         self.classifier.bias.data.zero_()
 
-        # TODO: wsum
-        if self.infusion == "wsum":
+        if self.infusion in ("wsum", "mac"):
             self.weight_layer = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
             self.weight_layer.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
             self.weight_layer.bias.data.zero_()
+
+        if self.infusion == "mac":
+            self.link_layer = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
+            self.link_layer.weight.data.normal_(mean=0.0, std=self.embedder.config.initializer_range)
+            self.link_layer.bias.data.zero_()
 
     def forward(self, batch):
 
@@ -63,46 +67,70 @@ class Classifier(pl.LightningModule):
         # self.embedder.embeddings.token_type_embeddings = nn.Embedding(
         #     self.type_vocab_size, self.embedder.config.hidden_size).to(batch["input_ids"].deivice)
         # TODO: initialization?
-        batch["token_type_ids"] = None if "roberta" in self.hparams["model"] else batch["token_type_ids"]
+        if self.infusion == "mac":
+            mac_token_type_ids = batch["token_type_ids"]
+        if "roberta" in self.hparams["model"]:
+            batch["token_type_ids"] = None
         # print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
         # print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
+        # print('batch["input_ids"]:', batch["input_ids"].shape)
+        # print("batch labels:", batch["labels"])
 
         results = self.embedder(input_ids=batch["input_ids"], attention_mask=batch["attention_mask"],
                                 token_type_ids=batch["token_type_ids"])
-#         print('batch["input_ids"]:', batch["input_ids"].shape)
-#         print("batch labels:", batch["labels"])
 
-        token_embeddings, *_ = results
-#         print("tokken_embeddings:", token_embeddings.shape)
+        token_embeddings, *_ = results  # (b * 2 * k, seq_len, h)
+        print("tokken_embeddings:", token_embeddings.shape)
         output = token_embeddings.mean(dim=1)  # average over all tokens, (b * 2 * k, h)
-#         print("output:", output.shape)
+        print("output:", output.shape)
         if self.infusion == "sum":
             hidden_dim = output.shape[1]
-            # print("hidden_dim:", hidden_dim)
             output = output.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
-#             print("output:", output.shape)
-        elif self.infusion == "wsum":
+        elif self.infusion in ("wsum", "mac"):
             weights = self.weight_layer(output)
-            weights = F.softmax(weights)
-            # print("weight:", weights.shape)
-            weights = weights.reshape(-1, 1, self.hparams["k"])
-            # print("weight:", weights.shape)
-
+            weights = F.softmax(weights, dim=1)
+            weights = weights.reshape(-1, 1, self.hparams["k"])  # (b * 2, 1, k)
             hidden_dim = output.shape[1]
+            if self.infusion == "mac":
+                # get embedding for the knowledge
+                print("token_type_ids:", mac_token_type_ids.shape, mac_token_type_ids)
+                knowledge_mask = torch.eq(mac_token_type_ids, 0)  # knowledge type id = 0
+                knowledge_embeddings = token_embeddings[knowledge_mask, :]
+                # calculate link description
+                present_scores = self.link_layer(knowledge_embeddings)
+                print("present_scores:", present_scores.shape)
+                knowledge_lens = knowledge_mask.sum(dim=1)
+                knowledge_link = torch.zeros(output.shape)  # (b * 2 * k, h)
+                cum_idx = 0
+                for idx, length in enumerate(knowledge_lens):
+                    score_vec = present_scores[cum_idx: cum_idx+length]
+                    knowledge_mat = knowledge_embeddings[cum_idx: cum_idx+length]
+                    knowledge_link[idx] = torch.mm(score_vec.T, knowledge_mat)
+                # calculate link strength
+                knowledge_link = knowledge_link.reshape(-1, self.hparams["k"], hidden_dim)
+                dot_prod_mat = torch.exp(torch.bmm(knowledge_link, knowledge_link.transpose(1,2)))
+                diag_idx = torch.arange(0, self.hparams["k"])
+                dot_prod_mat[:, diag_idx, diag_idx] = 0
+                max_link_strength = dot_prod_mat.max(1).values/dot_prod_mat.sum(1)
+                print("max_link_strength:", max_link_strength.shape)
+                # do weight reduction
+                weights = weights.reshape(-1, self.hparams["k"])
+                print("weights:", weights.shape)
+                weights -= (1 - weights) * max_link_strength
+                print("weights:", weights.shape)
+                weights = weights.reshape(-1, 1, self.hparams["k"])
+                print("weights:", weights.shape)
             output = output.reshape(-1, self.hparams["k"], hidden_dim)
-            # print("output:", output.shape)
             output = torch.bmm(weights, output).squeeze(dim=1)
-            # print("output:", output.shape)
 
         output = self.dropout(output)
         logits = self.classifier(output).squeeze(dim=1)
-        # print('logits.shape:', logits.shape)
+        print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
-#             print('logits.shape:', logits.shape)
         logits = logits.reshape(-1, batch["num_choice"])
-        # print('logits.shape:', logits.shape)
+        print('logits.shape:', logits.shape)
 
         return logits
 
@@ -146,7 +174,8 @@ class Classifier(pl.LightningModule):
 
         t_total = len(self.train_dataloader()) // self.hparams["accumulate_grad_batches"] * self.hparams["max_epochs"]
 
-        optimizer = AdamW(self.parameters(), lr=float(self.hparams["learning_rate"]), eps=float(self.hparams["adam_epsilon"]))
+        optimizer = AdamW(self.parameters(), lr=float(self.hparams["learning_rate"]),
+                          eps=float(self.hparams["adam_epsilon"]))
 
         return optimizer
 
@@ -198,7 +227,7 @@ class Classifier(pl.LightningModule):
             if infusion == 'concat':
                 knowledges = ["\n".join(row[x.strip()+'_knowledge'][:k]) for x in choice_names]
                 return list(zip(knowledges, cycle([context]), choices))
-            elif infusion == "max" or infusion == "sum" or infusion == "wsum":
+            elif infusion:
                 knowledges = [row[x.strip()+'_knowledge'][:k] for x in choice_names]
                 k_context_choices = [zip(knowledge, cycle([context]), cycle([choice])) for knowledge, choice
                                      in zip(knowledges, choices)]
@@ -243,8 +272,8 @@ class Classifier(pl.LightningModule):
             results = self.tokenizer.batch_encode_plus(concated_triplets, add_special_tokens=True,
                                                        max_length=self.hparams["max_length"], return_tensors='pt',
                                                        return_attention_masks=True, pad_to_max_length=True)
-            # results["token_type_ids"] = torch.tensor([self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3)
-            #                                           for input_ids in results["input_ids"]])
+            results["token_type_ids"] = torch.tensor([self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 3)
+                                                      for input_ids in results["input_ids"]])
         else:
             pairs = [pair for example in examples for pair in example["text"]]
             results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
@@ -326,3 +355,9 @@ if __name__ == "__main__":
     print(ttids)
     print(list(get_seg_lens(input_ids[0], tokenizer.sep_token_id, 3)))
     print(torch.tensor(ttids))
+
+    tti = torch.tensor([[0] * 10 + [1] * 66, [0] * 10 + [1] * 66,
+                        [0] * 20 + [1] * 56, [0] * 20 + [1] * 56,
+                        [0] * 5 + [1] * 71, [0] * 5 + [1] * 71,
+                        [0] * 5 + [1] * 71, [0] * 5 + [1] * 71])
+
