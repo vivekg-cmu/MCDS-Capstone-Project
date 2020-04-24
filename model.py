@@ -36,6 +36,8 @@ class Classifier(pl.LightningModule):
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache")
         self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
+        self.embedder.embeddings.token_type_embeddings.weight.data.normal_(self.embedder.config.initializer_range)
+        self.embedder.embeddings.token_type_embeddings.bias.data.zero_()
         # TODO: initialization?
         self.tokenizer = AutoTokenizer.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
 
@@ -68,8 +70,8 @@ class Classifier(pl.LightningModule):
 
         if self.infusion == "mac":
             mac_token_type_ids = batch["token_type_ids"]
-        if "roberta" in self.hparams["model"]:
-            batch["token_type_ids"] = None
+        # if "roberta" in self.hparams["model"]:
+        #     batch["token_type_ids"] = None
         # print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
         # print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
         # print('batch["input_ids"]:', batch["input_ids"].shape)
