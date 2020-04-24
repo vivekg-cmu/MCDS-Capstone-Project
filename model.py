@@ -44,7 +44,6 @@ class Classifier(pl.LightningModule):
         self.embedder.train()
         self.label_offset = 0
         self.classifier = nn.Linear(self.embedder.config.hidden_size, 1, bias=True)
-#         print("batch size:", self.hparams["batch_size"])
         self.dropout = nn.Dropout(hparams["dropout"])
 
         self.loss = nn.CrossEntropyLoss(ignore_index=-1, reduction="mean")
@@ -90,7 +89,9 @@ class Classifier(pl.LightningModule):
         elif self.infusion in ("wsum", "mac"):
             weights = self.weight_layer(output)
             weights = F.softmax(weights, dim=1)
-            weights = weights.reshape(-1, 1, self.hparams["k"])  # (b * 2, 1, k)
+            # print("weight:", weights.shape)
+            weights = weights.reshape(-1, 1, self.hparams["k"])
+            # print("weight:", weights.shape)
             hidden_dim = output.shape[1]
             if self.infusion == "mac":
                 # get embedding for the knowledge
