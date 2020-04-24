@@ -15,5 +15,5 @@ train_y: "data/piqa/train-labels.lst"
 val_x: "data/piqa/valid-knowledge.jsonl"
 val_y: "data/piqa/valid-labels.lst"
 k: 2
-infusion: "sum"
+infusion: "wsum"
 # checkpoint: "/home/jupyter/MCDS-Capstone-Project/ckpts/infusionmax-k2-full-precision16/epoch=5_v0.ckpt"

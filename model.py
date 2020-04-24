@@ -83,7 +83,7 @@ class Classifier(pl.LightningModule):
 #             print("output:", output.shape)
         elif self.infusion == "wsum":
             weights = self.weight_layer(output)
-            weights = F.softmax(weights)
+            weights = F.softmax(weights, dim=1)
             # print("weight:", weights.shape)
             weights = weights.reshape(-1, 1, self.hparams["k"])
             # print("weight:", weights.shape)
