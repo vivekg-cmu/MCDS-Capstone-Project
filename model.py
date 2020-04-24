@@ -35,6 +35,8 @@ class Classifier(pl.LightningModule):
         self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k / q / a" so will have 3 type of tokens
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache")
+        self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
+        # TODO: initialization?
         self.tokenizer = AutoTokenizer.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
 
         self.embedder.train()
@@ -64,9 +66,6 @@ class Classifier(pl.LightningModule):
         assert len(batch["attention_mask"].shape) == 2, "LM only take two-dimensional input"
         assert len(batch["token_type_ids"].shape) == 2, "LM only take two-dimensional input"
 
-        # self.embedder.embeddings.token_type_embeddings = nn.Embedding(
-        #     self.type_vocab_size, self.embedder.config.hidden_size).to(batch["input_ids"].deivice)
-        # TODO: initialization?
         if self.infusion == "mac":
             mac_token_type_ids = batch["token_type_ids"]
         if "roberta" in self.hparams["model"]:
