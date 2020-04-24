@@ -8,11 +8,11 @@ dropout: 0
 adam_epsilon: 10e-8
 warmup_steps: 150
 batch_size: 4
-max_length: 224
+max_length: 128
 formula: "goal -> sol1|sol2"
 train_x: "data/piqa/train-knowledge-last100.jsonl"
 train_y: "data/piqa/train-labels-last100.lst"
 val_x: "data/piqa/train-knowledge-last100.jsonl"
 val_y: "data/piqa/train-labels-last100.lst"
-infusion: "mac"
-k: 2
+#infusion: "mac"
+#k: 2

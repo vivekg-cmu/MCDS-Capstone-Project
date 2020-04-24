@@ -35,11 +35,10 @@ class Classifier(pl.LightningModule):
         self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k / q / a" so will have 3 type of tokens
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache")
-        self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
-        self.embedder.embeddings.token_type_embeddings.weight.data.normal_(self.embedder.config.initializer_range)
-        self.embedder.embeddings.token_type_embeddings.bias.data.zero_()
-        # TODO: initialization?
         self.tokenizer = AutoTokenizer.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
+
+        self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
+        # TODO: initialization?
 
         self.embedder.train()
         self.label_offset = 0
@@ -112,7 +111,7 @@ class Classifier(pl.LightningModule):
                 knowledge_link = knowledge_link.reshape(-1, self.hparams["k"], hidden_dim)
                 dot_prod_mat = torch.exp(torch.bmm(knowledge_link, knowledge_link.transpose(1,2)))
                 diag_idx = torch.arange(0, self.hparams["k"])
-                dot_prod_mat[:, diag_idx, diag_idx] = 0
+                dot_prod_mat[:, diag_idx, diag_idx] = 0  # TODO: cannot do this inplace?
                 max_link_strength = dot_prod_mat.max(1).values/dot_prod_mat.sum(1)
                 print("max_link_strength:", max_link_strength.shape)
                 # do weight reduction
@@ -281,8 +280,10 @@ class Classifier(pl.LightningModule):
             results = self.tokenizer.batch_encode_plus(pairs, add_special_tokens=True,
                                                        max_length=self.hparams["max_length"], return_tensors='pt',
                                                        return_attention_masks=True, pad_to_max_length=True)
+            results["token_type_ids"] = torch.tensor([self.get_token_type_ids(input_ids, self.tokenizer.sep_token_id, 2)
+                                                      for input_ids in results["input_ids"]])
 #         print('results["input_ids"].shape:', results["input_ids"].shape)
-#         print('results["token_type_ids"]:', type(results["token_type_ids"]))
+        print('results["token_type_ids"]:', results["token_type_ids"])
 
         k = 1 if "k" not in self.hparams or self.hparams["infusion"] == "concat" else self.hparams["k"]
         assert results["input_ids"].shape[0] == batch_size * num_choice * k, \
