@@ -9,6 +9,9 @@ from argparse import ArgumentParser
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 from model import Classifier
+from argparse import ArgumentParser
+import yaml
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 
 def train(config):
@@ -71,5 +74,4 @@ if __name__ == "__main__":
     with open(config_path) as fp:
         config = yaml.full_load(fp)
     print("config:", config)
-
     train(config)
