@@ -35,11 +35,10 @@ class Classifier(pl.LightningModule):
         self.type_vocab_size = 3 if "infusion" in self.hparams else 2  # encode as "k / q / a" so will have 3 type of tokens
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache")
-        self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
-        self.embedder.embeddings.token_type_embeddings.weight.data.normal_(self.embedder.config.initializer_range)
-        self.embedder.embeddings.token_type_embeddings.bias.data.zero_()
-        # TODO: initialization?
         self.tokenizer = AutoTokenizer.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
+        
+        # self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
+        # TODO: initialization?
 
         self.embedder.train()
         self.label_offset = 0
@@ -69,8 +68,8 @@ class Classifier(pl.LightningModule):
 
         if self.infusion == "mac":
             mac_token_type_ids = batch["token_type_ids"]
-        # if "roberta" in self.hparams["model"]:
-        #     batch["token_type_ids"] = None
+        if "roberta" in self.hparams["model"]:
+            batch["token_type_ids"] = None
         # print('batch["token_type_ids"].unique():', batch["token_type_ids"].unique())
         # print('batch["token_type_ids"].shape:', batch["token_type_ids"].shape)
         # print('batch["input_ids"]:', batch["input_ids"].shape)
@@ -80,9 +79,9 @@ class Classifier(pl.LightningModule):
                                 token_type_ids=batch["token_type_ids"])
 
         token_embeddings, *_ = results  # (b * 2 * k, seq_len, h)
-        print("tokken_embeddings:", token_embeddings.shape)
+        # print("tokken_embeddings:", token_embeddings.shape)
         output = token_embeddings.mean(dim=1)  # average over all tokens, (b * 2 * k, h)
-        print("output:", output.shape)
+        # print("output:", output.shape)
         if self.infusion == "sum":
             hidden_dim = output.shape[1]
             output = output.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
@@ -91,48 +90,55 @@ class Classifier(pl.LightningModule):
             weights = F.softmax(weights, dim=1)
             # print("weight:", weights.shape)
             weights = weights.reshape(-1, 1, self.hparams["k"])
-            # print("weight:", weights.shape)
+            print("weight:", weights.device)
             hidden_dim = output.shape[1]
-            if self.infusion == "mac":
-                # get embedding for the knowledge
-                print("token_type_ids:", mac_token_type_ids.shape, mac_token_type_ids)
-                knowledge_mask = torch.eq(mac_token_type_ids, 0)  # knowledge type id = 0
-                knowledge_embeddings = token_embeddings[knowledge_mask, :]
-                # calculate link description
-                present_scores = self.link_layer(knowledge_embeddings)
-                print("present_scores:", present_scores.shape)
-                knowledge_lens = knowledge_mask.sum(dim=1)
-                knowledge_link = torch.zeros(output.shape)  # (b * 2 * k, h)
-                cum_idx = 0
-                for idx, length in enumerate(knowledge_lens):
-                    score_vec = present_scores[cum_idx: cum_idx+length]
-                    knowledge_mat = knowledge_embeddings[cum_idx: cum_idx+length]
-                    knowledge_link[idx] = torch.mm(score_vec.T, knowledge_mat)
-                # calculate link strength
-                knowledge_link = knowledge_link.reshape(-1, self.hparams["k"], hidden_dim)
-                dot_prod_mat = torch.exp(torch.bmm(knowledge_link, knowledge_link.transpose(1,2)))
-                diag_idx = torch.arange(0, self.hparams["k"])
-                dot_prod_mat[:, diag_idx, diag_idx] = 0
-                max_link_strength = dot_prod_mat.max(1).values/dot_prod_mat.sum(1)
-                print("max_link_strength:", max_link_strength.shape)
-                # do weight reduction
-                weights = weights.reshape(-1, self.hparams["k"])
-                print("weights:", weights.shape)
-                weights -= (1 - weights) * max_link_strength
-                print("weights:", weights.shape)
-                weights = weights.reshape(-1, 1, self.hparams["k"])
-                print("weights:", weights.shape)
+            with torch.autograd.set_detect_anomaly(True):
+                if self.infusion == "mac":
+                    # get embedding for the knowledge
+                    # print("token_type_ids:", mac_token_type_ids.shape, mac_token_type_ids)
+                    knowledge_mask = torch.eq(mac_token_type_ids, 0)  # knowledge type id = 0
+                    knowledge_embeddings = token_embeddings[knowledge_mask, :]
+                    # calculate link description
+                    present_scores = self.link_layer(knowledge_embeddings)
+                    print("present_scores:", present_scores.device)
+                    knowledge_lens = knowledge_mask.sum(dim=1)
+                    knowledge_link = torch.zeros(output.shape).to(weights.device)  # (b * 2 * k, h)
+                    print("knowledge_link:", knowledge_link.device)
+    #                 knowledge_link = knowledge_link.to(weights.device)
+    #                 print("knowledge_link:", knowledge_link.device)
+                    cum_idx = 0
+                    for idx, length in enumerate(knowledge_lens):
+                        score_vec = present_scores[cum_idx: cum_idx+length]
+                        knowledge_mat = knowledge_embeddings[cum_idx: cum_idx+length]
+                        knowledge_link[idx] = torch.mm(score_vec.T, knowledge_mat)
+                        cum_idx += length
+                    # calculate link strength
+                    knowledge_link = knowledge_link.reshape(-1, self.hparams["k"], hidden_dim)
+                    print("knowledge_link:", knowledge_link.device)
+                    dot_prod_mat = torch.exp(torch.bmm(knowledge_link, knowledge_link.transpose(1,2)))
+                    diag_idx = torch.arange(0, self.hparams["k"])
+                    diag_idx = diag_idx - torch.eye(self.hparams["k"]).to(diag_idx.device) * diag_idx.diag()
+    #                 dot_prod_mat[:, diag_idx, diag_idx] = 0
+                    max_link_strength = dot_prod_mat.max(1).values / dot_prod_mat.sum(1)
+                    print("max_link_strength:", max_link_strength.device)
+                    # do weight reduction
+                    weights = weights.reshape(-1, self.hparams["k"])
+                    # print("weights:", weights.shape)
+                    weights -= (1 - weights) * max_link_strength
+                    # print("weights:", weights.shape)
+                    weights = weights.reshape(-1, 1, self.hparams["k"])
+                    # print("weights:", weights.shape)
             output = output.reshape(-1, self.hparams["k"], hidden_dim)
             output = torch.bmm(weights, output).squeeze(dim=1)
 
         output = self.dropout(output)
         logits = self.classifier(output).squeeze(dim=1)
-        print('logits.shape:', logits.shape)
+        # print('logits.shape:', logits.shape)
 
         if self.infusion == "max":
             logits = logits.reshape(-1, self.hparams["k"]).max(dim=1).values
         logits = logits.reshape(-1, batch["num_choice"])
-        print('logits.shape:', logits.shape)
+        # print('logits.shape:', logits.shape)
 
         return logits
 
