@@ -80,18 +80,16 @@ class Classifier(pl.LightningModule):
                                 token_type_ids=batch["token_type_ids"])
 
         token_embeddings, *_ = results  # (b * 2 * k, seq_len, h)
-        # print("tokken_embeddings:", token_embeddings.shape)
         output = token_embeddings.mean(dim=1)  # average over all tokens, (b * 2 * k, h)
-#         print("output:", output.shape)
+        # print("output:", output.dtype)
         if self.infusion == "sum":
             hidden_dim = output.shape[1]
             output = output.reshape(-1, self.hparams["k"], hidden_dim).sum(dim=1)
         elif self.infusion in ("wsum", "mac"):
             weights = self.weight_layer(output)
             weights = F.softmax(weights, dim=1)
-            # print("weight:", weights.shape)
             weights = weights.reshape(-1, 1, self.hparams["k"])
-#             print("weight:", weights)
+            # print("weight:", weights.dtype)
             hidden_dim = output.shape[1]
 
             if self.infusion == "mac":
@@ -102,7 +100,7 @@ class Classifier(pl.LightningModule):
                 # calculate link description
                 present_scores = self.link_layer(knowledge_embeddings)
                 knowledge_lens = knowledge_mask.sum(dim=1)
-                knowledge_link = torch.zeros(output.shape).to(weights.device)  # (b * 2 * k, h)
+                knowledge_link = torch.zeros(output.shape, dtype=output.dtype).to(weights.device)  # (b * 2 * k, h)
                 cum_idx = 0
                 for idx, length in enumerate(knowledge_lens):
                     score_vec = present_scores[cum_idx: cum_idx+length]
@@ -112,13 +110,11 @@ class Classifier(pl.LightningModule):
                 # calculate link strength
                 knowledge_link = knowledge_link.reshape(-1, self.hparams["k"], hidden_dim)
                 # print("knowledge_link:", knowledge_link)
-                # print("knowledge_link.shape:", knowledge_link.shape)
-                # print("knowledge_link.transpose(-2,-1).shape:", knowledge_link.transpose(-2,-1).shape)
                 dot_prod_mat = torch.bmm(knowledge_link, knowledge_link.transpose(-2,-1))
                 # print("dot_prod_mat:", dot_prod_mat)
                 min_values = dot_prod_mat.min(1).values.unsqueeze(-1)  # (b * 2, k, 1)
                 # print("min_values:", min_values)
-                identity = torch.eye(self.hparams["k"]).to(dot_prod_mat.device)
+                identity = torch.eye(self.hparams["k"], dtype=output.dtype).to(dot_prod_mat.device)
                 batch_size = min_values.shape[0]
                 batch_identity = identity.reshape(1, self.hparams["k"], self.hparams["k"]).repeat(batch_size, 1, 1)
                 # print("batch_identity:", batch_identity)
@@ -128,10 +124,9 @@ class Classifier(pl.LightningModule):
                                + batch_identity * (min_values - 1)  # ensure self dot product not to be selected as max
                 # print("dot_prod_mat:", dot_prod_mat)
                 max_values = dot_prod_mat.max(1).values  # (b * 2, k)
+                # print("max_values:", max_values)
                 dot_prod_mat = dot_prod_mat - batch_identity * (min_values - 1)  # set diagonal as 0
                 # print("dot_prod_mat:", dot_prod_mat)
-                # print("torch.exp(max_values - max_values):", torch.exp(max_values - max_values))
-                # print("torch.sum(torch.exp(dot_prod_mat - max_values), dim=1):", torch.sum(torch.exp(dot_prod_mat - max_values.unsqueeze(-1)), dim=1))
                 max_link_strength = torch.exp(max_values - max_values) / torch.sum(torch.exp(dot_prod_mat - max_values.unsqueeze(-1)), dim=1)
                 # print("max_link_strength:", max_link_strength)
                 # do weight reduction
@@ -157,14 +152,24 @@ class Classifier(pl.LightningModule):
 
         return logits
 
+    def on_epoch_start(self):
+        self.running_acc = 0.0
+        self.passed_samples = 0.0
+
     def training_step(self, batch, batch_idx):
 
         logits = self.forward(batch)
         loss = self.loss(logits, batch["labels"])
         if self.trainer and self.trainer.use_dp:
             loss = loss.unsqueeze(0)
+        num_correct = self.running_acc * self.passed_samples + torch.sum(batch["labels"] == torch.argmax(logits, dim=1))
+        self.passed_samples += batch["labels"].shape[0]
+        self.running_acc = num_correct / self.passed_samples
         return {
-            "loss": loss
+            "loss": loss,
+            "progress_bar": {
+                "train_acc": self.running_acc
+            }
         }
 
     def validation_step(self, batch, batch_idx):
