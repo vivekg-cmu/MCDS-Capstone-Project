@@ -2,7 +2,7 @@ task_name: physicaliqa
 model: "roberta-large"
 accumulate_grad_batches: 8
 precision: 16  # Half precison only works best with volta architectures such as V100
-max_epochs: 12
+max_epochs: 8
 learning_rate: 2e-6
 dropout: 0
 adam_epsilon: 10e-8
@@ -10,10 +10,9 @@ warmup_steps: 150
 batch_size: 8
 max_length: 128
 formula: "goal -> sol1|sol2"
-train_x: "data/piqa/train-knowledge.jsonl"
-train_y: "data/piqa/train-labels.lst"
-val_x: "data/piqa/valid-knowledge.jsonl"
-val_y: "data/piqa/valid-labels.lst"
-# k: 2
+train_x: "data/piqa/train-knowledge-last100.jsonl"
+train_y: "data/piqa/train-labels-last100.lst"
+val_x: "data/piqa/train-knowledge-last100.jsonl"
+val_y: "data/piqa/train-labels-last100.lst"
 # infusion: "mac"
-# checkpoint: "/home/jupyter/MCDS-Capstone-Project/ckpts/infusionmax-k2-full-precision16/epoch=5_v0.ckpt"
+# k: 2

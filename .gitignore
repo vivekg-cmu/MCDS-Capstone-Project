@@ -1,10 +1,7 @@
 data/
-lightning_logs/
-checkpoints/
 ckpts/
+lightning_logs/
 *temp*
-
-###### Come with the baseline repo #####
 
 *truth
 *tsv
