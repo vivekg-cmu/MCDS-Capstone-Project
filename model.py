@@ -36,7 +36,7 @@ class Classifier(pl.LightningModule):
         self.root_path = pathlib.Path(__file__).parent.absolute()
         self.embedder = AutoModel.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache")
         self.tokenizer = AutoTokenizer.from_pretrained(hparams["model"], cache_dir=self.root_path / "model_cache", use_fast=False)
-        
+
         self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
         nn.init.xavier_uniform_(self.embedder.embeddings.token_type_embeddings.weight)
         # TODO: initialization?
@@ -93,7 +93,7 @@ class Classifier(pl.LightningModule):
             weights = weights.reshape(-1, 1, self.hparams["k"])
 #             print("weight:", weights)
             hidden_dim = output.shape[1]
-            
+
             if self.infusion == "mac":
                 # get embedding for the knowledge
                 # print("token_type_ids:", mac_token_type_ids.shape, mac_token_type_ids)
@@ -111,25 +111,35 @@ class Classifier(pl.LightningModule):
                     cum_idx += length
                 # calculate link strength
                 knowledge_link = knowledge_link.reshape(-1, self.hparams["k"], hidden_dim)
-                print("knowledge_link:", knowledge_link)
-                print("knowledge_link.shape:", knowledge_link.shape)
-                print("knowledge_link.transpose(-2,-1).shape:", knowledge_link.transpose(-2,-1).shape)
+                # print("knowledge_link:", knowledge_link)
+                # print("knowledge_link.shape:", knowledge_link.shape)
+                # print("knowledge_link.transpose(-2,-1).shape:", knowledge_link.transpose(-2,-1).shape)
                 dot_prod_mat = torch.bmm(knowledge_link, knowledge_link.transpose(-2,-1))
-                print("dot_prod_mat:", dot_prod_mat)
-                dot_prod_mat = torch.exp(dot_prod_mat)
-                print("dot_prod_mat:", dot_prod_mat)
-                dot_prod_mat = dot_prod_mat - torch.eye(self.hparams["k"]).to(dot_prod_mat.device) * dot_prod_mat
-                print("dot_prod_mat:", dot_prod_mat)
-#                 diag_idx = torch.arange(0, self.hparams["k"])
-#                 dot_prod_mat[:, diag_idx, diag_idx] = 0
-                max_link_strength = dot_prod_mat.max(1).values / dot_prod_mat.sum(1)
-                print("max_link_strength:", max_link_strength)
+                # print("dot_prod_mat:", dot_prod_mat)
+                min_values = dot_prod_mat.min(1).values.unsqueeze(-1)  # (b * 2, k, 1)
+                # print("min_values:", min_values)
+                identity = torch.eye(self.hparams["k"]).to(dot_prod_mat.device)
+                batch_size = min_values.shape[0]
+                batch_identity = identity.reshape(1, self.hparams["k"], self.hparams["k"]).repeat(batch_size, 1, 1)
+                # print("batch_identity:", batch_identity)
+                # print("batch_identity * dot_prod_mat:", batch_identity * dot_prod_mat)
+                # print("batch_identity * (min_values - 1):", batch_identity * (min_values - 1))
+                dot_prod_mat = dot_prod_mat - batch_identity * dot_prod_mat \
+                               + batch_identity * (min_values - 1)  # ensure self dot product not to be selected as max
+                # print("dot_prod_mat:", dot_prod_mat)
+                max_values = dot_prod_mat.max(1).values  # (b * 2, k)
+                dot_prod_mat = dot_prod_mat - batch_identity * (min_values - 1)  # set diagonal as 0
+                # print("dot_prod_mat:", dot_prod_mat)
+                # print("torch.exp(max_values - max_values):", torch.exp(max_values - max_values))
+                # print("torch.sum(torch.exp(dot_prod_mat - max_values), dim=1):", torch.sum(torch.exp(dot_prod_mat - max_values.unsqueeze(-1)), dim=1))
+                max_link_strength = torch.exp(max_values - max_values) / torch.sum(torch.exp(dot_prod_mat - max_values.unsqueeze(-1)), dim=1)
+                # print("max_link_strength:", max_link_strength)
                 # do weight reduction
                 weights = weights.reshape(-1, self.hparams["k"])
                 weights = weights - (1 - weights) * max_link_strength
-                print("weight:", weights)
+                # print("weight:", weights)
                 weights = weights.reshape(-1, 1, self.hparams["k"])
-                
+
             output = output.reshape(-1, self.hparams["k"], hidden_dim)
 #             print('output:', output)
             output = torch.bmm(weights, output).squeeze(dim=1)
