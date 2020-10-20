@@ -2,6 +2,7 @@ data/
 ckpts/
 lightning_logs/
 *temp*
+pred.lst
 
 *truth
 *tsv

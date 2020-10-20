@@ -39,7 +39,6 @@ class Classifier(pl.LightningModule):
 
         self.embedder.embeddings.token_type_embeddings = nn.Embedding(self.type_vocab_size, self.embedder.config.hidden_size)
         nn.init.xavier_uniform_(self.embedder.embeddings.token_type_embeddings.weight)
-        # TODO: initialization?
 
         self.embedder.train()
         self.label_offset = 0
@@ -326,7 +325,7 @@ class Classifier(pl.LightningModule):
 
 
 if __name__ == "__main__":
-
+    # Some tests
     x_path = "data/piqa/train-knowledge-last100.jsonl"
     y_path = "data/piqa/train-labels-last100.lst"
     k = 2
