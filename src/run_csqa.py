@@ -22,6 +22,9 @@ import glob
 import logging
 import os
 import random
+import time
+from pathlib import Path
+from datetime import datetime
 
 import numpy as np
 import torch
@@ -49,6 +52,9 @@ from utils_processor import newprocessors, newoutput_modes
 import json
 
 logger = logging.getLogger(__name__)
+current_time = datetime.now().strftime('%Y%m%d%H%M%S')
+running_times = {}
+project_root = str(Path(__file__).resolve().parents[1])
 
 ALL_MODELS = sum((tuple(conf.pretrained_config_archive_map.keys()) for conf in (BertConfig, RobertaConfig, AlbertConfig)), ())
 
@@ -78,7 +84,7 @@ def count_parameters(model):
 def train(args, train_dataset, model, tokenizer):
 	""" Train the model """
 	if args.local_rank in [-1, 0]:
-		tb_writer = SummaryWriter(os.path.join('runs', args.output_dir.split('/')[-1]))
+		tb_writer = SummaryWriter(os.path.join(project_root, 'runs', "{}_{}_{}".format(args.model_type, args.model_name_or_path, current_time)))
 
 	if args.split_model_at == -1:
 		args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
@@ -138,7 +144,11 @@ def train(args, train_dataset, model, tokenizer):
 	train_iterator = trange(int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0])
 	set_seed(args)  # Added here for reproductibility (even between python 2 and 3)
 	curr_best = 0.0
-	for _ in train_iterator:
+	epoch_times = []
+	eval_accs = []
+	for epoch_num in train_iterator:
+		epoch_start = time.time()
+
 		epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
 		preds = None
 		out_label_ids = None
@@ -195,6 +205,11 @@ def train(args, train_dataset, model, tokenizer):
 			if args.max_steps > 0 and global_step > args.max_steps:
 				epoch_iterator.close()
 				break
+		
+		epoch_end = time.time()
+		epoch_time = epoch_end - epoch_start
+		epoch_times.append(round(epoch_time, 4))
+
 		if args.max_steps > 0 and global_step > args.max_steps:
 			train_iterator.close()
 			break
@@ -202,10 +217,12 @@ def train(args, train_dataset, model, tokenizer):
 		tr_acc = accuracy(preds, out_label_ids)
 		logger.info("Training acc = %s", str(tr_acc['acc']))
 		tb_writer.add_scalar('train_acc', tr_acc['acc'], global_step)
+		tb_writer.add_scalar('epoch_time', epoch_time, global_step)
 		if args.local_rank == -1 and args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
 			results = evaluate(args, model, tokenizer)
 			for key, value in results.items():
 				tb_writer.add_scalar('eval_{}'.format(key), value, global_step)
+			eval_accs.append(results['acc'])
 			if results['acc'] > curr_best:
 				curr_best = results['acc']
 				# Save model checkpoint
@@ -219,7 +236,8 @@ def train(args, train_dataset, model, tokenizer):
 				logger.info("Saving model checkpoint to %s", output_dir)
 	if args.local_rank in [-1, 0]:
 		tb_writer.close()
-	return global_step, tr_loss / global_step
+
+	return global_step, tr_loss / global_step, epoch_times, eval_accs
 
 def save_logits(logits_all, filename):
 	with open(filename, "w") as f:
@@ -624,14 +642,17 @@ def main():
 		model.redistribute(args.split_model_at)
 
 	# Training
+	torch.cuda.synchronize()
 	if args.do_train:
 		train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, evaluate=False)
-		global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+		global_step, tr_loss, epoch_times, eval_accs = train(args, train_dataset, model, tokenizer)
 		logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
-
+		running_times['epoch_times'] = epoch_times
+		running_times['eval_accs'] = eval_accs
 
 	# Evaluation
 	results = {}
+	start = time.time()
 	if args.do_eval and args.local_rank in [-1, 0]:
 		tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
 		checkpoints = [args.output_dir]
@@ -654,6 +675,12 @@ def main():
 				result = evaluate(args, model, tokenizer, prefix=global_step)
 			result = dict((k + '_{}'.format(global_step), v) for k, v in result.items())
 			results.update(result)
+	end = time.time()
+	running_times['eval_time': round(end - start, 4)]
+	running_times['results': results]
+
+	with open(os.path.join(project_root, "running_time", "{}_{}_{}.json".format(args.model_type, args.model_name_or_path, datetime)), 'w') as fp:
+		fp.dump(running_times, fp, indent=4)
 
 	return results
 
