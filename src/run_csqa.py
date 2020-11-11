@@ -23,6 +23,7 @@ import logging
 import os
 import random
 import time
+import json
 from pathlib import Path
 from datetime import datetime
 
@@ -219,7 +220,7 @@ def train(args, train_dataset, model, tokenizer):
 		tb_writer.add_scalar('train_acc', tr_acc['acc'], global_step)
 		tb_writer.add_scalar('epoch_time', epoch_time, global_step)
 		if args.local_rank == -1 and args.evaluate_during_training:  # Only evaluate when single GPU otherwise metrics may not average well
-			results = evaluate(args, model, tokenizer)
+			results, _ = evaluate(args, model, tokenizer)
 			for key, value in results.items():
 				tb_writer.add_scalar('eval_{}'.format(key), value, global_step)
 			eval_accs.append(results['acc'])
@@ -696,7 +697,7 @@ def main():
 	running_times['results'] = results
 
 	with open(os.path.join(project_root, "running_time", "{}_{}_{}.json".format(args.model_type, args.model_name_or_path, datetime)), 'w') as fp:
-		fp.dump(running_times, fp, indent=4)
+		json.dump(running_times, fp, indent=4)
 
 	return results
 
