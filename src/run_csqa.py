@@ -256,6 +256,7 @@ def evaluate(args, model, tokenizer, prefix=""):
 	eval_outputs_dirs = (args.output_dir, args.output_dir + '-MM') if args.task_name == "mnli" else (args.output_dir,)
 
 	results = {}
+	eval_time = 0
 	for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
 		eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, evaluate=True)
 
@@ -273,6 +274,9 @@ def evaluate(args, model, tokenizer, prefix=""):
 		logger.info("***** Running evaluation {} *****".format(prefix))
 		logger.info("  Num examples = %d", len(eval_dataset))
 		logger.info("  Batch size = %d", args.eval_batch_size)
+
+		eval_start = time.time()
+
 		eval_loss = 0.0
 		nb_eval_steps = 0
 		preds = None
@@ -306,6 +310,10 @@ def evaluate(args, model, tokenizer, prefix=""):
 			preds = np.squeeze(preds)
 		result = accuracy(preds, out_label_ids)
 		results.update(result)
+
+		eval_end = time.time()
+		eval_time += (eval_end - eval_start)
+
 		output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
 		with open(output_eval_file, "w") as writer:
 			logger.info("***** Eval results {} *****".format(prefix))
@@ -313,7 +321,7 @@ def evaluate(args, model, tokenizer, prefix=""):
 				logger.info("  %s = %s", key, str(result[key]))
 				writer.write("%s = %s\n" % (key, str(result[key])))
 
-	return results
+	return results, eval_time
 
 def predict(args, model, tokenizer, prefix=""):
 	# Loop to handle MNLI double evaluation (matched, mis-matched)
@@ -321,6 +329,7 @@ def predict(args, model, tokenizer, prefix=""):
 	eval_outputs_dirs = (args.output_dir, args.output_dir + '-MM') if args.task_name == "mnli" else (args.output_dir,)
 
 	results = {}
+	eval_time = 0
 	for eval_task, eval_output_dir in zip(eval_task_names, eval_outputs_dirs):
 		eval_dataset = load_and_cache_examples(args, eval_task, tokenizer, test=True)
 
@@ -338,6 +347,9 @@ def predict(args, model, tokenizer, prefix=""):
 		logger.info("***** Running evaluation {} *****".format(prefix))
 		logger.info("  Num examples = %d", len(eval_dataset))
 		logger.info("  Batch size = %d", args.eval_batch_size)
+
+		eval_start = time.time()
+
 		eval_loss = 0.0
 		nb_eval_steps = 0
 		preds = None
@@ -363,7 +375,11 @@ def predict(args, model, tokenizer, prefix=""):
 			else:
 				preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
 		save_logits(preds, os.path.join(eval_output_dir, "logits_submission.txt"))
-	return results
+
+		eval_end = time.time()
+		eval_time += (eval_end - eval_start)
+
+	return results, eval_time
 
 class MyDataset(torch.utils.data.Dataset):
 
@@ -652,7 +668,7 @@ def main():
 
 	# Evaluation
 	results = {}
-	start = time.time()
+	eval_time = 0
 	if args.do_eval and args.local_rank in [-1, 0]:
 		tokenizer = tokenizer_class.from_pretrained(args.output_dir, do_lower_case=args.do_lower_case)
 		checkpoints = [args.output_dir]
@@ -670,14 +686,14 @@ def main():
 			if args.split_model_at != -1:
 				model.redistribute(args.split_model_at)
 			if args.test:
-				result = predict(args, model, tokenizer, prefix=global_step)
+				result, ckpt_eval_time = predict(args, model, tokenizer, prefix=global_step)
 			else:
-				result = evaluate(args, model, tokenizer, prefix=global_step)
+				result, ckpt_eval_time = evaluate(args, model, tokenizer, prefix=global_step)
 			result = dict((k + '_{}'.format(global_step), v) for k, v in result.items())
 			results.update(result)
-	end = time.time()
-	running_times['eval_time': round(end - start, 4)]
-	running_times['results': results]
+			eval_time += ckpt_eval_time
+	running_times['eval_time'] = round(eval_time, 4)
+	running_times['results'] = results
 
 	with open(os.path.join(project_root, "running_time", "{}_{}_{}.json".format(args.model_type, args.model_name_or_path, datetime)), 'w') as fp:
 		fp.dump(running_times, fp, indent=4)
