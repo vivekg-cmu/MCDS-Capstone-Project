@@ -665,6 +665,7 @@ def main():
 		global_step, tr_loss, epoch_times, eval_accs = train(args, train_dataset, model, tokenizer)
 		logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 		running_times['epoch_times'] = epoch_times
+		running_times['avg_epoch_time'] = sum(epoch_times) / len(epoch_times)
 		running_times['eval_accs'] = eval_accs
 
 	# Evaluation
