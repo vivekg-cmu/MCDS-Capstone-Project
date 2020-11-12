@@ -4,3 +4,5 @@
 running_times/
 tb_logs/
 output/
+__pychace__
+downloaded_models/

@@ -147,6 +147,7 @@ class OCNModel(BertPreTrainedModel):
     def __init__(self, config, model_name):
         super(OCNModel, self).__init__(config)
         self.num_labels = config.num_labels
+        self.model_name = model_name
 
         if 'roberta' in model_name:
             print ('Building RoBERTa model')
@@ -181,12 +182,19 @@ class OCNModel(BertPreTrainedModel):
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
                 position_ids=None, head_mask=None, inputs_embeds=None, labels=None, concepts=None, concepts_mask=None, concepts_mask_full=None):
         batch_size, num_cand, seq_length = input_ids.shape
-        outputs = self.core(input_ids.view(-1, seq_length),
-                               attention_mask=attention_mask.view(-1, seq_length),
-                               token_type_ids=token_type_ids.view(-1,seq_length),
-                               position_ids=position_ids,
-                               head_mask=head_mask,
-                               inputs_embeds=inputs_embeds)
+        if 'distilbert' in self.model_name:
+            outputs = self.core(input_ids.view(-1, seq_length), 
+                attention_mask=attention_mask.view(-1, seq_length),
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds)
+        else:
+            outputs = self.core(input_ids.view(-1, seq_length),
+                attention_mask=attention_mask.view(-1, seq_length),
+                token_type_ids=token_type_ids.view(-1,seq_length),
+                position_ids=position_ids,
+                head_mask=head_mask,
+                inputs_embeds=inputs_embeds)
 
         all_hidden = outputs[0]
         if self.inject:
