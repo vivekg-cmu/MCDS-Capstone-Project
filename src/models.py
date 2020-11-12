@@ -7,8 +7,8 @@ import torch.nn as nn
 from torch.nn import CrossEntropyLoss, MSELoss, MultiMarginLoss
 import torch.nn.functional as F
 
-from transformers import BertPreTrainedModel,RobertaConfig, AlbertModel
-from customized_layers import OCN_Att_layer, OCN_CoAtt_layer, OCN_SelfAtt_layer, OCN_Merge_layer, QANet_Att_layer, SequenceSummary,SplitBertEncoder, BertModel
+from transformers import BertPreTrainedModel, RobertaConfig, AlbertModel, DistilBertModel
+from customized_layers import OCN_Att_layer, OCN_CoAtt_layer, OCN_SelfAtt_layer, OCN_Merge_layer, QANet_Att_layer, SequenceSummary, SplitBertEncoder, BertModel
 from customized_layers import ROBERTA_PRETRAINED_MODEL_ARCHIVE_MAP, RobertaModel, KVMem_Att_layer
 
 class ModelForMCRC(BertPreTrainedModel):
@@ -24,6 +24,9 @@ class ModelForMCRC(BertPreTrainedModel):
         elif 'bert' in model_name:
             print ('Building BERT model')
             self.core = BertModel(config)
+        elif 'distilbert' in model_name:
+            print ('Building DistilBert model')
+            self.core = DistilBertModel(config)
         else:
             print ('did not recognize the model')
             exit(0)
@@ -154,6 +157,9 @@ class OCNModel(BertPreTrainedModel):
         elif 'bert' in model_name:
             print ('Building BERT model')
             self.core = BertModel(config)
+        elif 'distilbert' in model_name:
+            print ('Building DistilBert model')
+            self.core = DistilBertModel(config)
         else:
             print ('did not recognize the model')
             exit(0)

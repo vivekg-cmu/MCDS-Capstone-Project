@@ -43,7 +43,8 @@ from transformers import (WEIGHTS_NAME, BertConfig,
 								  BertTokenizer,
 								  RobertaConfig,
 								  RobertaTokenizer,
-								  AlbertConfig, AlbertTokenizer)
+								  AlbertConfig, AlbertTokenizer, 
+								  DistilBertConfig, DistilBertTokenizer)
 
 from transformers import AdamW, get_linear_schedule_with_warmup
 
@@ -69,6 +70,7 @@ MODEL_CLASSES = {
 	'albert': (AlbertConfig, ModelForMCRC, AlbertTokenizer),
 	'albert-ocn': (AlbertConfig, OCNModel, AlbertTokenizer),
 	'albert-ocn-inj': (AlbertConfig, OCNModel, AlbertTokenizer),
+	'distilbert-ocn': (DistilBertConfig, OCNModel, DistilBertTokenizer),
 }
 
 
@@ -208,8 +210,8 @@ def train(args, train_dataset, model, tokenizer):
 				break
 		
 		epoch_end = time.time()
-		epoch_time = epoch_end - epoch_start
-		epoch_times.append(round(epoch_time, 4))
+		epoch_time = (epoch_end - epoch_start) / 60
+		epoch_times.append(round(epoch_time, 2))
 
 		if args.max_steps > 0 and global_step > args.max_steps:
 			train_iterator.close()
@@ -313,7 +315,7 @@ def evaluate(args, model, tokenizer, prefix=""):
 		results.update(result)
 
 		eval_end = time.time()
-		eval_time += (eval_end - eval_start)
+		eval_time += (eval_end - eval_start) / 60
 
 		output_eval_file = os.path.join(eval_output_dir, "eval_results.txt")
 		with open(output_eval_file, "w") as writer:
@@ -378,7 +380,7 @@ def predict(args, model, tokenizer, prefix=""):
 		save_logits(preds, os.path.join(eval_output_dir, "logits_submission.txt"))
 
 		eval_end = time.time()
-		eval_time += (eval_end - eval_start)
+		eval_time += (eval_end - eval_start) / 60
 
 	return results, eval_time
 
@@ -694,7 +696,7 @@ def main():
 			result = dict((k + '_{}'.format(global_step), v) for k, v in result.items())
 			results.update(result)
 			eval_time += ckpt_eval_time
-	running_times['eval_time'] = round(eval_time, 4)
+	running_times['eval_time'] = round(eval_time, 2)
 	running_times['results'] = results
 
 	with open(os.path.join(project_root, "running_times", "{}_{}_{}.json".format(args.model_type, args.model_name_or_path, current_time)), 'w') as fp:

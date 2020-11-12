@@ -1,3 +1,6 @@
 *.DS_Store
 *data/
 *data_sample/
+running_times/
+tb_logs/
+output/
