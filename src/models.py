@@ -185,7 +185,6 @@ class OCNModel(BertPreTrainedModel):
         if 'distilbert' in self.model_name:
             outputs = self.core(input_ids.view(-1, seq_length), 
                 attention_mask=attention_mask.view(-1, seq_length),
-                position_ids=position_ids,
                 head_mask=head_mask,
                 inputs_embeds=inputs_embeds)
         else:
