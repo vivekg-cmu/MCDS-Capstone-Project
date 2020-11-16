@@ -568,10 +568,13 @@ class OCN_SelfAtt_layer(nn.Module):
 class OCN_Merge_layer(nn.Module):
     def __init__(self, config):
         super(OCN_Merge_layer, self).__init__()
-        self.Wc = nn.Linear(config.hidden_size * 9, config.hidden_size)
+        # self.Wc = nn.Linear(config.hidden_size * 9, config.hidden_size)  # Uncomment this line for CSQA
+        self.Wc = nn.Linear(config.hidden_size * 5, config.hidden_size)  # Uncomment this line for social iqa
         self.Va = nn.Linear(config.hidden_size, 1)
         self.Wg = nn.Linear(config.hidden_size * 3, config.hidden_size)
 
+    """
+    # Uncomment this line for CSQA
     def forward(self, o1, o1o2, o1o3, o1o4, o1o5, q, q_mask):
         q_mask = (1.0 - q_mask.float()) * -10000.0
         Aq = F.softmax(self.Va(q) + q_mask.unsqueeze(2), dim=1)
@@ -579,6 +582,17 @@ class OCN_Merge_layer(nn.Module):
         OCK = torch.tanh(self.Wc(torch.cat([o1, o1o2, o1o3, o1o4, o1o5], dim=2)))  # batch * seq_len * hidden
         G = torch.sigmoid(self.Wg(torch.cat([o1, OCK, Q], dim=2)))
         out = G * o1 + (1 - G) * OCK
+        return out
+    """
+
+    # Uncomment this line for social iqa
+    def forward(self, opt, other_opt, q, q_mask):
+        q_mask = (1.0 - q_mask.float()) * -10000.0
+        Aq = F.softmax(self.Va(q) + q_mask.unsqueeze(2), dim=1)
+        Q = torch.bmm(q.permute(0, 2, 1), Aq).permute(0, 2, 1).repeat(1, opt.shape[1], 1)
+        OCK = torch.tanh(self.Wc(torch.cat([opt] + other_opt, dim=2)))  # batch * seq_len * hidden
+        G = torch.sigmoid(self.Wg(torch.cat([opt, OCK, Q], dim=2)))
+        out = G * opt + (1 - G) * OCK
         return out
 
 

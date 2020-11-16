@@ -47,9 +47,9 @@ class ModelForMCRC(BertPreTrainedModel):
         seq_length = input_ids.size(2)
         outputs = self.core(
             input_ids=input_ids.view(-1, seq_length),
-            attention_mask=attention_mask.view(-1, seq_length), 
+            attention_mask=attention_mask.view(-1, seq_length),
             token_type_ids=token_type_ids.view(-1, seq_length),
-            position_ids=position_ids, 
+            position_ids=position_ids,
             head_mask=head_mask,
             inputs_embeds=inputs_embeds
         )
@@ -61,7 +61,7 @@ class ModelForMCRC(BertPreTrainedModel):
             pooled_output = self.dropout(pooled_output)
             logits = self.classifier(pooled_output)
         logits = logits.view(-1, self.num_labels)
-        outputs = (logits,) + outputs[2:] 
+        outputs = (logits,) + outputs[2:]
 
         if labels is not None:
             loss_fct = CrossEntropyLoss()
@@ -98,6 +98,8 @@ class OptionCompareCell(nn.Module):
         self.SelfAtt_layer = OCN_SelfAtt_layer(config)
 
     def forward(self, encoded_o, encoded_q, option_mask, question_mask):
+        """
+        # Uncomment these for CSQA
         o1o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
         o1o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
         o1o4 = self.option_att_layer(encoded_o[:, 3, :, :], option_mask[:, 3, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
@@ -137,8 +139,29 @@ class OptionCompareCell(nn.Module):
         merged_o5 = self.option_merge_layer(encoded_o[:, 4, :, :], o5o1, o5o2, o5o3, o5o4, encoded_q[:, 4, :, :], question_mask[:, 4, :])
         reread_o5 = self.CoAtt_layer(encoded_q[:, 4, :, :], question_mask[:, 4, :], merged_o5, option_mask[:, 4, :])
         final_o5 = self.SelfAtt_layer(reread_o5, option_mask[:, 4, :], reread_o5, option_mask[:, 4, :])
+        """
 
-        candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1), final_o4.unsqueeze(1), final_o5.unsqueeze(1)], dim=1)
+        # Uncomment these for social iqa
+        o1o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
+        o1o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
+        merged_o1 = self.option_merge_layer(encoded_o[:, 0, :, :], [o1o2, o1o3], encoded_q[:, 0, :, :], question_mask[:, 0, :])
+        reread_o1 = self.CoAtt_layer(encoded_q[:, 0, :, :], question_mask[:, 0, :], merged_o1, option_mask[:, 0, :])
+        final_o1 = self.SelfAtt_layer(reread_o1, option_mask[:, 0, :], reread_o1, option_mask[:, 0, :])
+
+        o2o1 = self.option_att_layer(encoded_o[:, 0, :, :], option_mask[:, 0, :], encoded_o[:, 1, :, :], option_mask[:, 1, :])
+        o2o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 1, :, :], option_mask[:, 1, :])
+        merged_o2 = self.option_merge_layer(encoded_o[:, 1, :, :], [o2o1, o2o3], encoded_q[:, 1, :, :], question_mask[:, 1, :])
+        reread_o2 = self.CoAtt_layer(encoded_q[:, 1, :, :], question_mask[:, 1, :], merged_o2, option_mask[:, 1, :])
+        final_o2 = self.SelfAtt_layer(reread_o2, option_mask[:, 1, :], reread_o2, option_mask[:, 1, :])
+
+        o3o1 = self.option_att_layer(encoded_o[:, 0, :, :], option_mask[:, 0, :], encoded_o[:, 2, :, :], option_mask[:, 2, :])
+        o3o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 2, :, :], option_mask[:, 2, :])
+        merged_o3 = self.option_merge_layer(encoded_o[:, 2, :, :], [o3o1, o3o2], encoded_q[:, 2, :, :], question_mask[:, 2, :])
+        reread_o3 = self.CoAtt_layer(encoded_q[:, 2, :, :], question_mask[:, 2, :], merged_o3, option_mask[:, 2, :])
+        final_o3 = self.SelfAtt_layer(reread_o3, option_mask[:, 2, :], reread_o3, option_mask[:, 2, :])
+
+        # candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1), final_o4.unsqueeze(1), final_o5.unsqueeze(1)], dim=1)  # Uncomment this line for CSQA
+        candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1)], dim=1)  # Uncomment this line for social iqa
         candidates, _ = torch.max(candidates, dim=2)
         return candidates
 
@@ -164,7 +187,7 @@ class OCNModel(BertPreTrainedModel):
         else:
             print ('did not recognize the model')
             exit(0)
-        
+
         self.classifier = nn.Linear(config.hidden_size, 1)
 
         self.loss_fct = CrossEntropyLoss()
@@ -173,17 +196,17 @@ class OCNModel(BertPreTrainedModel):
         self.inject = False
         if 'inj' in model_name:
             self.Inject_layer = KVMem_Att_layer(config)
-            self.inject = True 
+            self.inject = True
         self.init_weights()
 
     def redistribute(self, split):
         self.core.encoder.redistribute(split)
-        
+
     def forward(self, input_ids, attention_mask=None, token_type_ids=None,
                 position_ids=None, head_mask=None, inputs_embeds=None, labels=None, concepts=None, concepts_mask=None, concepts_mask_full=None):
         batch_size, num_cand, seq_length = input_ids.shape
         if 'distilbert' in self.model_name:
-            outputs = self.core(input_ids.view(-1, seq_length), 
+            outputs = self.core(input_ids.view(-1, seq_length),
                 attention_mask=attention_mask.view(-1, seq_length),
                 head_mask=head_mask,
                 inputs_embeds=inputs_embeds)
@@ -210,10 +233,10 @@ class OCNModel(BertPreTrainedModel):
         encoded_o = encoded * option_mask.unsqueeze(3).float()
         encoded_q = encoded * question_mask.unsqueeze(3).float()
         candidates = self.OCN_cell(encoded_o, encoded_q, option_mask, question_mask)
-        
+
         logits = self.classifier(candidates).squeeze(2)
         outputs = (logits,) + outputs[2:]
-        
+
         if labels is not None:
             loss = self.loss_fct(logits, labels.view(-1))
             outputs = (loss,) + outputs
