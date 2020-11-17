@@ -91,9 +91,10 @@ def count_parameters(model):
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
     if args.local_rank in [-1, 0]:
-        tb_writer = SummaryWriter(os.path.join(
-            project_root, 'tb_logs', "{}_{}_{}".format(args.model_type, args.model_name_or_path.split('/')[-1],
-                                                       current_time)))
+        tb_writer = SummaryWriter(os.path.join(project_root, 'tb_logs',
+                                               "{}_{}_{}_{}".format(args.task_name, args.model_type,
+                                                                    args.model_name_or_path.split('/')[-1],
+                                                                    current_time)))
 
     if args.split_model_at == -1:
         args.train_batch_size = args.per_gpu_train_batch_size * max(1, args.n_gpu)
@@ -729,8 +730,9 @@ def main():
     running_times['results'] = results
 
     with open(os.path.join(project_root, "running_times",
-                           "{}_{}_{}.json".format(args.model_type, args.model_name_or_path.split('/')[-1],
-                                                  current_time)), 'w') as fp:
+                           "{}_{}_{}_{}.json".format(args.task_name, args.model_type,
+                                                     args.model_name_or_path.split('/')[-1],
+                                                     current_time)), 'w') as fp:
         json.dump(running_times, fp, indent=4)
 
     return results
