@@ -569,8 +569,8 @@ class OCN_Merge_layer(nn.Module):
     def __init__(self, config):
         super(OCN_Merge_layer, self).__init__()
         # self.Wc = nn.Linear(config.hidden_size * 9, config.hidden_size)  # Uncomment this line for CSQA
-        self.Wc = nn.Linear(config.hidden_size * 5, config.hidden_size)  # Uncomment this line for social iqa
-        # self.Wc = nn.Linear(config.hidden_size * 3, config.hidden_size)  # Uncomment this line for physical iqa
+        # self.Wc = nn.Linear(config.hidden_size * 5, config.hidden_size)  # Uncomment this line for social iqa
+        self.Wc = nn.Linear(config.hidden_size * 3, config.hidden_size)  # Uncomment this line for physical iqa
         self.Va = nn.Linear(config.hidden_size, 1)
         self.Wg = nn.Linear(config.hidden_size * 3, config.hidden_size)
 
