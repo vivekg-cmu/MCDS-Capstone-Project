@@ -4,6 +4,10 @@
 running_times/
 tb_logs/
 output/
-src/__pychace__/
 downloaded_models/
 .idea
+
+# Python
+__pycache__
+*.py[cod]
+*$py.class

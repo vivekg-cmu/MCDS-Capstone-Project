@@ -299,6 +299,52 @@ class SocialIqaProcessor(DataProcessor):
         return examples
 
 
+class PhysicalIqaProcessor(DataProcessor):
+    def __init__(self, data_dir):
+        self.D = [[], [], []]
+        for sid in range(2):
+            data = []
+            with open([os.path.join(data_dir, "train.jsonl"), os.path.join(data_dir, "valid.jsonl")][sid], "r") as fp:
+                for line in fp:
+                    data.append(json.loads(line))
+            labels = []
+            with open([os.path.join(data_dir, "train-labels.lst"), os.path.join(data_dir, "valid-labels.lst")][sid],
+                      "r") as fp:
+                for line in fp:
+                    labels.append(int(line.strip()))
+            print(len(data), len(labels))
+            for i in range(len(data)):
+                d = ['Q: ' + data[i]['goal']]
+                for option in ['sol1', 'sol2']:
+                    d += ['A: ' + data[i][option]]
+                d += [labels[i]]
+                self.D[sid] += [d]
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self.D[0], "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self.D[1], "dev")
+
+    def get_labels(self):
+        """See base class."""
+        return ["0", "1"]
+
+    def _create_examples(self, data, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for (i, d) in enumerate(data):
+            answer = str(data[i][-1])
+            for k in range(2):
+                guid = "%s-%s-%s" % (set_type, i, k)
+                text_b = data[i][k + 1]
+                text_a = data[i][0]
+                examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=answer))
+        return examples
+
+
 class CommonsenseqaInjProcessor(DataProcessor):
     def __init__(self, data_dir):
         self.D = [[], [], []]
@@ -367,11 +413,13 @@ class CommonsenseqaInjProcessor(DataProcessor):
 myprocessors = {
     "csqa": CommonsenseqaProcessor,
     "csqa-inj": CommonsenseqaInjProcessor,
-    "siqa": SocialIqaProcessor
+    "siqa": SocialIqaProcessor,
+    "piqa": PhysicalIqaProcessor
 }
 
 output_modes = {
     "csqa": "classification",
     "csqa-inj": "classification",
-    "siqa": "classification"
+    "siqa": "classification",
+    "piqa": "classification"
 }

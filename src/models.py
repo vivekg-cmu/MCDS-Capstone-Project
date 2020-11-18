@@ -141,6 +141,7 @@ class OptionCompareCell(nn.Module):
         final_o5 = self.SelfAtt_layer(reread_o5, option_mask[:, 4, :], reread_o5, option_mask[:, 4, :])
         """
 
+        """
         # Uncomment these for social iqa
         o1o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
         o1o3 = self.option_att_layer(encoded_o[:, 2, :, :], option_mask[:, 2, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
@@ -159,9 +160,22 @@ class OptionCompareCell(nn.Module):
         merged_o3 = self.option_merge_layer(encoded_o[:, 2, :, :], [o3o1, o3o2], encoded_q[:, 2, :, :], question_mask[:, 2, :])
         reread_o3 = self.CoAtt_layer(encoded_q[:, 2, :, :], question_mask[:, 2, :], merged_o3, option_mask[:, 2, :])
         final_o3 = self.SelfAtt_layer(reread_o3, option_mask[:, 2, :], reread_o3, option_mask[:, 2, :])
+        """
+
+        # Uncomment these for physical iqa
+        o1o2 = self.option_att_layer(encoded_o[:, 1, :, :], option_mask[:, 1, :], encoded_o[:, 0, :, :], option_mask[:, 0, :])
+        merged_o1 = self.option_merge_layer(encoded_o[:, 0, :, :], [o1o2], encoded_q[:, 0, :, :], question_mask[:, 0, :])
+        reread_o1 = self.CoAtt_layer(encoded_q[:, 0, :, :], question_mask[:, 0, :], merged_o1, option_mask[:, 0, :])
+        final_o1 = self.SelfAtt_layer(reread_o1, option_mask[:, 0, :], reread_o1, option_mask[:, 0, :])
+
+        o2o1 = self.option_att_layer(encoded_o[:, 0, :, :], option_mask[:, 0, :], encoded_o[:, 1, :, :], option_mask[:, 1, :])
+        merged_o2 = self.option_merge_layer(encoded_o[:, 1, :, :], [o2o1], encoded_q[:, 1, :, :], question_mask[:, 1, :])
+        reread_o2 = self.CoAtt_layer(encoded_q[:, 1, :, :], question_mask[:, 1, :], merged_o2, option_mask[:, 1, :])
+        final_o2 = self.SelfAtt_layer(reread_o2, option_mask[:, 1, :], reread_o2, option_mask[:, 1, :])
 
         # candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1), final_o4.unsqueeze(1), final_o5.unsqueeze(1)], dim=1)  # Uncomment this line for CSQA
-        candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1)], dim=1)  # Uncomment this line for social iqa
+        # candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1), final_o3.unsqueeze(1)], dim=1)  # Uncomment this line for social iqa
+        candidates = torch.cat([final_o1.unsqueeze(1), final_o2.unsqueeze(1)], dim=1)  # Uncomment this line for physical iqa
         candidates, _ = torch.max(candidates, dim=2)
         return candidates
 

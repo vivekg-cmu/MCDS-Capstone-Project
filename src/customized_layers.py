@@ -570,11 +570,12 @@ class OCN_Merge_layer(nn.Module):
         super(OCN_Merge_layer, self).__init__()
         # self.Wc = nn.Linear(config.hidden_size * 9, config.hidden_size)  # Uncomment this line for CSQA
         self.Wc = nn.Linear(config.hidden_size * 5, config.hidden_size)  # Uncomment this line for social iqa
+        # self.Wc = nn.Linear(config.hidden_size * 3, config.hidden_size)  # Uncomment this line for physical iqa
         self.Va = nn.Linear(config.hidden_size, 1)
         self.Wg = nn.Linear(config.hidden_size * 3, config.hidden_size)
 
     """
-    # Uncomment this line for CSQA
+    # Uncomment this function for CSQA
     def forward(self, o1, o1o2, o1o3, o1o4, o1o5, q, q_mask):
         q_mask = (1.0 - q_mask.float()) * -10000.0
         Aq = F.softmax(self.Va(q) + q_mask.unsqueeze(2), dim=1)
@@ -585,7 +586,7 @@ class OCN_Merge_layer(nn.Module):
         return out
     """
 
-    # Uncomment this line for social iqa
+    # Uncomment this function for social/physical iqa
     def forward(self, opt, other_opt, q, q_mask):
         q_mask = (1.0 - q_mask.float()) * -10000.0
         Aq = F.softmax(self.Va(q) + q_mask.unsqueeze(2), dim=1)
