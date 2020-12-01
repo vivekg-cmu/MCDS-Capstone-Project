@@ -2,6 +2,7 @@ import json
 import os
 import logging
 import numpy as np
+from nltk import sent_tokenize
 from commonsense_mapping import COMMONSENSE_MAPPING
 from collections import Counter
 
@@ -345,6 +346,65 @@ class PhysicalIqaProcessor(DataProcessor):
         return examples
 
 
+class PIQAInjProcessor(DataProcessor):
+    
+    def __init__(self, data_dir):
+        train_file, val_file = os.path.join(data_dir, "train-bm25.jsonl"), os.path.join(data_dir, "valid-bm25.jsonl")
+        train_lbl_file, val_lbl_file = os.path.join(data_dir, 'train-labels.lst'), os.path.join(data_dir, 'valid-labels.lst')
+        
+        def read_labels(file):
+            labels = []
+            with open(file, 'r') as f:
+                for line in f:
+                    labels.append(line.strip())
+            return labels
+        
+        def read_data(data_file, label_file):
+            labels = read_labels(label_file)
+            data = []
+            with open(data_file, 'r') as f:
+                for i, (line, label) in enumerate(zip(f, labels)):
+                    item = json.loads(line)
+                    d = ['Q: ' + item["goal"]]
+                    d += ['A: ' + item['sol1']]
+                    d += ['A: ' + item['sol2']]
+                    d += [item['sol1_best_knowledge']]
+                    d += [item['sol2_best_knowledge']]
+                    d += [label] 
+                    data.append(d)
+            return data
+                    
+        self.train_data = read_data(train_file, train_lbl_file)
+        self.val_data = read_data(val_file, val_lbl_file)
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self.train_data, "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(self.val_data, "dev")
+
+    def get_labels(self):
+        """See base class."""
+        return ["0", "1"]
+
+    def _create_examples(self, data, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for (i, d) in enumerate(data):
+            answer = str(data[i][-1])
+
+            for k in range(2):
+                guid = "%s-%s-%s" % (set_type, i, k)
+                text_b = data[i][k+1]
+                text_a = data[i][0]
+                concepts = list(map(lambda x: ([x, '', '']), sent_tokenize(data[i][k+3])))
+                examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=answer, concepts=concepts))
+
+        return examples
+
+
 class CommonsenseqaInjProcessor(DataProcessor):
     def __init__(self, data_dir):
         self.D = [[], [], []]
@@ -414,12 +474,14 @@ myprocessors = {
     "csqa": CommonsenseqaProcessor,
     "csqa-inj": CommonsenseqaInjProcessor,
     "siqa": SocialIqaProcessor,
-    "piqa": PhysicalIqaProcessor
+    "piqa": PhysicalIqaProcessor,
+    "piqa-inj": PhysicalIqaProcessor
 }
 
 output_modes = {
     "csqa": "classification",
     "csqa-inj": "classification",
     "siqa": "classification",
-    "piqa": "classification"
+    "piqa": "classification",
+    "piqa-inj": "classification"
 }
