@@ -346,7 +346,7 @@ class PhysicalIqaProcessor(DataProcessor):
         return examples
 
 
-class PIQAInjProcessor(DataProcessor):
+class PhysicalIqaInjProcessor(DataProcessor):
     
     def __init__(self, data_dir):
         train_file, val_file = os.path.join(data_dir, "train-bm25.jsonl"), os.path.join(data_dir, "valid-bm25.jsonl")
@@ -475,7 +475,7 @@ myprocessors = {
     "csqa-inj": CommonsenseqaInjProcessor,
     "siqa": SocialIqaProcessor,
     "piqa": PhysicalIqaProcessor,
-    "piqa-inj": PhysicalIqaProcessor
+    "piqa-inj": PhysicalIqaInjProcessor
 }
 
 output_modes = {
