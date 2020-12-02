@@ -349,7 +349,8 @@ class PhysicalIqaProcessor(DataProcessor):
 class PhysicalIqaInjProcessor(DataProcessor):
     
     def __init__(self, data_dir):
-        train_file, val_file = os.path.join(data_dir, "train-bm25.jsonl"), os.path.join(data_dir, "valid-bm25.jsonl")
+        # train_file, val_file = os.path.join(data_dir, "train-bm25.jsonl"), os.path.join(data_dir, "valid-bm25.jsonl")
+        train_file, val_file = os.path.join(data_dir, "train-overlap.jsonl"), os.path.join(data_dir, "valid-overlap.jsonl")
         train_lbl_file, val_lbl_file = os.path.join(data_dir, 'train-labels.lst'), os.path.join(data_dir, 'valid-labels.lst')
         
         def read_labels(file):
