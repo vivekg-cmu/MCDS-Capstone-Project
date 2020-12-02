@@ -6,6 +6,9 @@ tb_logs/
 output/
 downloaded_models/
 .idea
+*.csv
+*.pickle
+.ipynb_checkpoints
 
 # Python
 __pycache__
