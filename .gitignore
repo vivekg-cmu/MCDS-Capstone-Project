@@ -9,6 +9,7 @@ downloaded_models/
 *.csv
 *.pickle
 .ipynb_checkpoints
+retrained/
 
 # Python
 __pycache__

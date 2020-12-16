@@ -689,6 +689,13 @@ def main():
     if args.split_model_at != -1:
         model.redistribute(args.split_model_at)
 
+    # Load the pretrained (LM as KB) model 
+    state = torch.load('/retrained/bert_retrained/piqa_core_model_v2_0')
+    keyset = list(state)
+    for key in keyset:
+        state['core.'+key] = state.pop(key)
+    model.load_state_dict(state, strict=False) 
+
     # Training
     torch.cuda.synchronize()
     if args.do_train:
