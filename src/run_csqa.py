@@ -690,7 +690,7 @@ def main():
         model.redistribute(args.split_model_at)
 
     # Load the pretrained (LM as KB) model 
-    state = torch.load('/retrained/bert_retrained/piqa_core_model_v2_0')
+    state = torch.load('retrained/bert_retrained/piqa_core_model_v2_0')
     keyset = list(state)
     for key in keyset:
         state['core.'+key] = state.pop(key)
